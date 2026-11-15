@@ -382,4 +382,159 @@ test("PUT /api/employer/applications/:id should reject another employer's applic
 });
 
 
+
+test("PUT /api/employer/applications/:id should reject an invalid application ID", async () => {
+    const agent = await loginAs("employer");
+
+    const response = await agent
+        .put("/api/employer/applications/abc")
+        .send({ status: "Interview" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("A valid application is required.");
+});
+
+test("PUT /api/employer/applications/:id should reject an invalid status", async () => {
+    const agent = await loginAs("employer");
+
+    const response = await agent
+        .put("/api/employer/applications/77")
+        .send({ status: "Pending" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe(
+        "Status must be Applied, Under Review, Interview, Offered, or Rejected."
+    );
+});
+
+test.each([
+    "Applied",
+    "Under Review",
+    "Interview",
+    "Offered",
+    "Rejected"
+])("PUT /api/employer/applications/:id should accept status: %s", async (status) => {
+    const agent = await loginAs("employer");
+
+    db.query.mockImplementation((sql, values, callback) => {
+        const normalizedSql = sql.toLowerCase();
+
+        if (normalizedSql.includes("from applications") &&
+            normalizedSql.includes("join jobs")) {
+            callback(null, [{ id: 77 }]);
+        } else if (normalizedSql.includes("update applications")) {
+            callback(null, { affectedRows: 1 });
+        } else {
+            callback(null, []);
+        }
+    });
+
+    const response = await agent
+        .put("/api/employer/applications/77")
+        .send({ status });
+
+    expect(response.status).toBe(200);
+    expect(response.body.application.status).toBe(status);
+});
+
+
+
+
+describe("Recruiter job listings", () => {
+
+    test("Employer can view their job postings", async () => {
+        const agent = await loginAs("employer");
+
+        db.query.mockImplementation((sql, values, callback) => {
+            callback(null, [
+                {
+                    id: 10,
+                    title: "Software Developer",
+                    location: "Montreal",
+                    job_type: "Internship",
+                    description: "Develop software applications.",
+                    status: "open"
+                },
+                {
+                    id: 11,
+                    title: "Web Developer",
+                    location: "Quebec",
+                    job_type: "Full-time",
+                    description: "Develop websites.",
+                    status: "open"
+                }
+            ]);
+        });
+
+        const response = await agent.get("/api/employer/jobs");
+
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveLength(2);
+        expect(response.body[0].title).toBe("Software Developer");
+        expect(response.body[1].title).toBe("Web Developer");
+    });
+
+    test("Job seeker cannot view employer job postings", async () => {
+        const agent = await loginAs("job_seeker");
+
+        const response = await agent.get("/api/employer/jobs");
+
+        expect(response.status).toBe(403);
+        expect(response.body.message).toBe(
+            "Only employers can view their job postings."
+        );
+    });
+
+    test("Unauthenticated user cannot view employer job postings", async () => {
+        const response = await request(app).get("/api/employer/jobs");
+
+        expect(response.status).toBe(401);
+    });
+
+});
+
+
+describe("Recruiter applicant lists", () => {
+
+    test("Employer can view applicants", async () => {
+        const agent = await loginAs("employer");
+
+        db.query.mockImplementation((sql, values, callback) => {
+            callback(null, []);
+        });
+
+        const response = await agent.get("/api/employer/applications");
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual([]);
+
+        // Verify that the employer ID is used in the database query.
+        expect(db.query).toHaveBeenCalledWith(
+            expect.any(String),
+            [50],
+            expect.any(Function)
+        );
+    });
+
+    test("Job seeker cannot view recruiter applicants", async () => {
+        const agent = await loginAs("job_seeker");
+
+        const response = await agent.get("/api/employer/applications");
+
+        expect(response.status).toBe(403);
+        expect(response.body.message).toBe(
+            "Only employers can view applicants."
+        );
+    });
+
+    test("Unauthenticated user cannot view recruiter applicants", async () => {
+        const response = await request(app)
+            .get("/api/employer/applications");
+
+        expect(response.status).toBe(401);
+    });
+
+});
+
+
 });
