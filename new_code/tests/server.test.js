@@ -166,4 +166,220 @@ test("POST /api/register/employer should reject a duplicate email", async () => 
 });
 
 
+
+test("POST /api/jobs should reject users who are not logged in", async () => {
+    const response = await request(app)
+        .post("/api/jobs")
+        .send({
+            title: "Software Developer",
+            company: "Test Company",
+            location: "Montreal",
+            category: "Technology",
+            job_type: "Internship",
+            description: "A software internship."
+        });
+
+    expect(response.status).toBe(401);
+});
+
+test("POST /api/jobs should reject job seekers", async () => {
+    const agent = request.agent(app);
+
+    // Log in as a job seeker
+    db.query.mockImplementationOnce((sql, values, callback) => {
+        callback(null, [{
+            id: 42,
+            email: "seeker@example.com",
+            password: require("bcrypt").hashSync("Password123!", 10),
+            role: "job_seeker"
+        }]);
+    });
+
+    const login = await agent.post("/api/login").send({
+        email: "seeker@example.com",
+        password: "Password123!"
+    });
+
+    expect(login.status).toBe(200);
+
+    const response = await agent.post("/api/jobs").send({
+        title: "Software Developer",
+        company: "Test Company",
+        location: "Montreal",
+        category: "Technology",
+        job_type: "Internship",
+        description: "A software internship."
+    });
+
+    expect(response.status).toBe(403);
+});
+
+test("POST /api/jobs should reject incomplete job details", async () => {
+    const agent = request.agent(app);
+
+    db.query.mockImplementationOnce((sql, values, callback) => {
+        callback(null, [{
+            id: 50,
+            email: "employer@example.com",
+            password: require("bcrypt").hashSync("Password123!", 10),
+            role: "employer"
+        }]);
+    });
+
+    const login = await agent.post("/api/login").send({
+        email: "employer@example.com",
+        password: "Password123!"
+    });
+
+    expect(login.status).toBe(200);
+
+    const response = await agent.post("/api/jobs").send({
+        title: "Software Developer"
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("All fields are required.");
+});
+
+test("POST /api/jobs should reject an invalid job type", async () => {
+    const agent = request.agent(app);
+
+    db.query.mockImplementationOnce((sql, values, callback) => {
+        callback(null, [{
+            id: 50,
+            email: "employer@example.com",
+            password: require("bcrypt").hashSync("Password123!", 10),
+            role: "employer"
+        }]);
+    });
+
+    const login = await agent.post("/api/login").send({
+        email: "employer@example.com",
+        password: "Password123!"
+    });
+
+    expect(login.status).toBe(200);
+
+    const response = await agent.post("/api/jobs").send({
+        title: "Software Developer",
+        company: "Test Company",
+        location: "Montreal",
+        category: "Technology",
+        job_type: "Invalid Type",
+        description: "A software internship."
+    });
+
+    expect(response.status).toBe(400);
+});
+
+
+
+async function loginAs(role) {
+    const agent = request.agent(app);
+
+    const userId = role === "employer" ? 50 : 42;
+    const email = role === "employer"
+        ? "employer@example.com"
+        : "seeker@example.com";
+
+    const password = "Password123!";
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    db.query.mockImplementation((sql, values, callback) => {
+        if (sql.toLowerCase().includes("from users")) {
+            callback(null, [{
+                id: userId,
+                email,
+                password: hashedPassword,
+                role
+            }]);
+        } else {
+            callback(null, [{
+                id: userId,
+                first_name: "Test",
+                last_name: "User",
+                company_name: "Test Company"
+            }]);
+        }
+    });
+
+    const response = await agent.post("/api/login").send({
+        email,
+        password
+    });
+
+    expect(response.status).toBe(200);
+
+    return agent;
+}
+
+
+test("GET /api/employer/applications should reject users who are not logged in", async () => {
+    const response = await request(app)
+        .get("/api/employer/applications");
+
+    expect(response.status).toBe(401);
+});
+
+test("GET /api/employer/applications should reject job seekers", async () => {
+    const agent = await loginAs("job_seeker");
+
+    const response = await agent
+        .get("/api/employer/applications");
+
+    expect(response.status).toBe(403);
+});
+
+test("PUT /api/employer/applications/:id should update application status", async () => {
+    const agent = await loginAs("employer");
+
+    db.query.mockImplementation((sql, values, callback) => {
+        const normalizedSql = sql.toLowerCase();
+
+        // Confirm that the application belongs to this employer.
+        if (
+            normalizedSql.includes("from applications") &&
+            normalizedSql.includes("join jobs")
+        ) {
+            callback(null, [{ id: 77 }]);
+        }
+
+        // Simulate a successful status update.
+        else if (normalizedSql.includes("update applications")) {
+            callback(null, { affectedRows: 1 });
+        } else {
+            callback(null, []);
+        }
+    });
+
+    const response = await agent
+        .put("/api/employer/applications/77")
+        .send({ status: "Interview" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe(
+        "Application status updated."
+    );
+    expect(response.body.application.status).toBe("Interview");
+});
+
+test("PUT /api/employer/applications/:id should reject another employer's application", async () => {
+    const agent = await loginAs("employer");
+
+    // Simulate an application that does not belong to this employer.
+    db.query.mockImplementation((sql, values, callback) => {
+        callback(null, []);
+    });
+
+    const response = await agent
+        .put("/api/employer/applications/77")
+        .send({ status: "Interview" });
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toBe(
+        "That application could not be found."
+    );
+});
+
+
 });
