@@ -44,10 +44,16 @@ test("a profile-resume application checks availability and inserts only once", a
     let insertParams;
 
     db.query.mockImplementationOnce((sql, params, callback) => {
-        expect(sql).toContain("FROM jobs");
-        expect(params).toEqual([7]);
-        callback(null, [{ id: 7, archived_at: null, deadline_passed: 0 }]);
-    });
+    expect(sql).toContain("FROM jobs");
+    expect(params).toEqual([7]);
+    callback(null, [{
+        id: 7,
+        archived_at: null,
+        deadline_passed: 0,
+        employer_id: 99,
+        title: "Senior Platform Engineer"
+    }]);
+});
     db.query.mockImplementationOnce((sql, params, callback) => {
         expect(params).toEqual([42]);
         callback(null, [{ resume_path: null }]);
@@ -58,10 +64,9 @@ test("a profile-resume application checks availability and inserts only once", a
         callback(null, { affectedRows: 1, insertId: 101 });
     });
     db.query.mockImplementationOnce((sql, params, callback) => {
-        expect(sql).toContain("SELECT employer_id, title FROM jobs");
-        expect(params).toEqual([7]);
-        callback(null, [{ employer_id: 99, title: "Senior Platform Engineer" }]);
-    });
+    expect(sql).toContain("INSERT INTO notifications");
+    callback(null, { affectedRows: 1, insertId: 202 });
+});
 
     const response = await agent.post("/api/applications").send({
         jobId: 7,
@@ -101,17 +106,22 @@ test("an uploaded additional document stays private and is downloadable by its e
 
     let insertParams;
     db.query.mockImplementationOnce((sql, params, callback) => {
-        callback(null, [{ id: 7, archived_at: null, deadline_passed: 0 }]);
-    });
+    callback(null, [{
+        id: 7,
+        archived_at: null,
+        deadline_passed: 0,
+        employer_id: 99,
+        title: "Senior Platform Engineer"
+    }]);
+});
     db.query.mockImplementationOnce((sql, params, callback) => {
         insertParams = params;
         callback(null, { affectedRows: 1, insertId: 101 });
     });
     db.query.mockImplementationOnce((sql, params, callback) => {
-        expect(sql).toContain("SELECT employer_id, title FROM jobs");
-        expect(params).toEqual([7]);
-        callback(null, [{ employer_id: 99, title: "Senior Platform Engineer" }]);
-    });
+    expect(sql).toContain("INSERT INTO notifications");
+    callback(null, { affectedRows: 1, insertId: 202 });
+});
 
     const response = await seeker.post("/api/applications")
         .field("jobId", "7")
