@@ -81,10 +81,22 @@ const EMPLOYER_LIST_SQL = `
         applications.applied_at,
         applications.submitted_resume_original_name,
         (applications.submitted_resume_file IS NOT NULL) AS has_submitted_resume,
+        applications.cover_letter_path,
         jobs.title AS job_title,
-        users.email,
-        job_seeker_profiles.first_name,
-        job_seeker_profiles.last_name
+        COALESCE(applications.email, users.email) AS email,
+        COALESCE(applications.first_name, job_seeker_profiles.first_name) AS first_name,
+        COALESCE(applications.last_name, job_seeker_profiles.last_name) AS last_name,
+        COALESCE(applications.phone, job_seeker_profiles.phone) AS phone,
+        COALESCE(applications.address, job_seeker_profiles.address) AS address,
+        COALESCE(applications.postal_code, job_seeker_profiles.postal_code) AS postal_code,
+        applications.linkedin_url,
+        applications.portfolio_url,
+        applications.work_authorization,
+        applications.availability_date,
+        applications.salary_min,
+        applications.salary_max,
+        applications.salary_currency,
+        applications.relevant_experience
     FROM applications
     JOIN jobs
         ON applications.job_id = jobs.id
@@ -101,6 +113,18 @@ const EMPLOYER_RESUME_SQL = `
         applications.id,
         applications.submitted_resume_file,
         applications.submitted_resume_original_name,
+        jobs.employer_id
+    FROM applications
+    JOIN jobs
+        ON applications.job_id = jobs.id
+    WHERE applications.id = ?
+        AND jobs.employer_id = ?
+`;
+
+const EMPLOYER_ADDITIONAL_DOCUMENT_SQL = `
+    SELECT
+        applications.id,
+        applications.cover_letter_path,
         jobs.employer_id
     FROM applications
     JOIN jobs
@@ -169,6 +193,8 @@ function presentSeekerApplication(row) {
 }
 
 function presentEmployerApplication(row) {
+    const additionalDocumentFileName = String(row.cover_letter_path || "").split(/[\\/]/).pop() || "";
+
     return {
         id: row.id,
         job_id: row.job_id,
@@ -177,10 +203,25 @@ function presentEmployerApplication(row) {
         applied_at: row.applied_at,
         submitted_resume_original_name: row.submitted_resume_original_name || null,
         has_submitted_resume: asBoolean(row.has_submitted_resume),
+        has_additional_document: Boolean(row.cover_letter_path),
+        additional_document_name: additionalDocumentFileName
+            .replace(/^\d+-[0-9a-f]{16}-/i, "")
+            .replace(/^\d+-/, "") || null,
         job_title: row.job_title,
         email: row.email,
         first_name: row.first_name,
-        last_name: row.last_name
+        last_name: row.last_name,
+        phone: row.phone,
+        address: row.address,
+        postal_code: row.postal_code,
+        linkedin_url: row.linkedin_url,
+        portfolio_url: row.portfolio_url,
+        work_authorization: row.work_authorization,
+        availability_date: row.availability_date,
+        salary_min: row.salary_min,
+        salary_max: row.salary_max,
+        salary_currency: row.salary_currency,
+        relevant_experience: row.relevant_experience
     };
 }
 
@@ -240,6 +281,24 @@ function canDownloadSubmittedResume(session, row, audience) {
 
     if (!row.submitted_resume_file) {
         return { status: 404, message: "No resume was submitted with this application." };
+    }
+
+    return null;
+}
+
+function canDownloadEmployerAdditionalDocument(session, row) {
+    const denied = authorizeEmployer(session);
+
+    if (denied) {
+        return denied;
+    }
+
+    if (!row || Number(row.employer_id) !== Number(session.userId)) {
+        return { status: 404, message: "That application could not be found." };
+    }
+
+    if (!row.cover_letter_path) {
+        return { status: 404, message: "No additional document was submitted with this application." };
     }
 
     return null;
@@ -386,6 +445,7 @@ module.exports = {
     SEEKER_RESUME_SQL,
     EMPLOYER_LIST_SQL,
     EMPLOYER_RESUME_SQL,
+    EMPLOYER_ADDITIONAL_DOCUMENT_SQL,
     authorizeSeeker,
     authorizeEmployer,
     presentSeekerApplication,
@@ -393,6 +453,7 @@ module.exports = {
     selectVisibleApplications,
     selectVisibleApplication,
     canDownloadSubmittedResume,
+    canDownloadEmployerAdditionalDocument,
     applicationInsert,
     summarizeApplications
 };

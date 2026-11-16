@@ -67,6 +67,16 @@ if (!response.ok) {
     document.getElementById('profile-location').textContent =
         profile.location || 'Not provided';
 
+    if (profile.address) {
+        document.getElementById('profile-address').textContent = profile.address;
+        document.getElementById('profile-address-row').hidden = false;
+    }
+
+    if (profile.postal_code) {
+        document.getElementById('profile-postal-code').textContent = profile.postal_code;
+        document.getElementById('profile-postal-code-row').hidden = false;
+    }
+
     // Display About Me
     document.getElementById('profile-about').textContent =
         profile.about || 'No information provided.';
@@ -89,10 +99,15 @@ if (!response.ok) {
     if (resumeActions) resumeActions.setAttribute("hidden", "hidden");
 
     if (profile.resume_path) {
-        const isDocx = profile.resume_path.toLowerCase().endsWith(".docx");
-        resumeIframe.src = isDocx ? "/api/profile/resume/preview" : profile.resume_path;
-        if (isDocx) resumeIframe.setAttribute("sandbox", "");
-        else resumeIframe.removeAttribute("sandbox");
+        const isWordDocument = /\.docx?$/i.test(profile.resume_path);
+        if (isWordDocument) {
+            // Convert the Word file to an HTML document in the server-side preview route.
+            resumeIframe.setAttribute("sandbox", "");
+            resumeIframe.src = "/api/profile/resume/preview";
+        } else {
+            resumeIframe.removeAttribute("sandbox");
+            resumeIframe.src = profile.resume_path;
+        }
         resumePreview.removeAttribute("hidden");
         resumeBox.setAttribute("hidden", "hidden");
         resumeChoices.setAttribute("hidden", "hidden");

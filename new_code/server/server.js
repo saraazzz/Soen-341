@@ -9,6 +9,9 @@ const bcrypt = require("bcrypt");
 const session = require("express-session");
 
 const multer = require("multer");
+const mammoth = require("mammoth");
+const WordExtractor = require("word-extractor");
+const APPLICATION_UPLOAD_DIR = path.join(__dirname, "private", "application-resumes");
 const storage = multer.diskStorage({
     destination: "public/uploads/",
     filename: (req, file, cb) => {
@@ -17,11 +20,57 @@ const storage = multer.diskStorage({
     }
 });
 const upload = multer({ storage });
+const resumeStorage = multer.diskStorage({
+    destination: "public/uploads/",
+    filename: (req, file, cb) => {
+        const originalName = path.basename(file.originalname);
+        const extension = path.extname(originalName);
+        const baseName = path.basename(originalName, extension).replace(/[^a-zA-Z0-9_-]/g, "_");
+        cb(null, `${Date.now()}-${baseName || file.fieldname}${extension}`);
+    }
+});
+const resumeUpload = multer({ storage: resumeStorage });
+const applicationUploadStorage = multer.diskStorage({
+    destination: (req, file, callback) => {
+        fs.mkdir(APPLICATION_UPLOAD_DIR, { recursive: true }, (error) => {
+            callback(error, APPLICATION_UPLOAD_DIR);
+        });
+    },
+    filename: (req, file, callback) => {
+        const originalName = path.basename(file.originalname);
+        const extension = path.extname(originalName);
+        const baseName = path.basename(originalName, extension).replace(/[^a-zA-Z0-9_-]/g, "_");
+        callback(null, `${Date.now()}-${baseName || file.fieldname}${extension}`);
+    }
+});
+const applicationUpload = multer({
+    storage: applicationUploadStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+    { name: "resume", maxCount: 1 },
+    { name: "coverLetter", maxCount: 1 }
+]);
+const handleApplicationUploads = (req, res, next) => {
+    applicationUpload(req, res, (error) => {
+        if (error) {
+            console.error("Application document upload error:", error);
+            const message = error.code === "LIMIT_FILE_SIZE"
+                ? "Each application document must be 10 MB or smaller."
+                : error instanceof multer.MulterError
+                    ? "The application documents could not be uploaded."
+                    : "Could not process application documents.";
+            return res.status(error instanceof multer.MulterError ? 400 : 500).json({ message });
+        }
+        next();
+    });
+};
 const {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
     snapshotProfileResume,
+    storeUploadedFile,
     resolveStoredResume,
+    resolveStoredApplicationDocument,
     removeStoredResume,
     unlinkPublicUpload
 } = require("./application-resumes");
@@ -31,14 +80,15 @@ const {
     selectVisibleApplications,
     selectVisibleApplication,
     canDownloadSubmittedResume,
+    canDownloadEmployerAdditionalDocument,
     summarizeApplications,
-    applicationInsert,
     presentEmployerApplication,
     SEEKER_LIST_SQL,
     SEEKER_DETAIL_SQL,
     SEEKER_RESUME_SQL,
     EMPLOYER_LIST_SQL,
-    EMPLOYER_RESUME_SQL
+    EMPLOYER_RESUME_SQL,
+    EMPLOYER_ADDITIONAL_DOCUMENT_SQL
 } = require("./application-metrics");
 const { parseDeadline } = require("./posting-deadlines");
 const { startDeadlineArchiver } = require("./deadline-archiver");
@@ -50,11 +100,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use('/api/resumes', require('./routes/resumes'));
 
+
 app.use(session({
     secret: "careerconnect-secret",
     resave: false,
     saveUninitialized: false,
 }));
+app.use('/api/feedback', require('./routes/feedback'));
 
 // Serve frontend files
 app.use(express.static("public"));
@@ -69,6 +121,67 @@ const db = mysql.createConnection({
     database: process.env.DB_NAME || "recruiting_website"
 });
 
+app.set("db", db);
+
+// Render Word resumes as HTML so the profile can display them inside its iframe.
+app.get('/api/profile/resume/preview', (req, res) => {
+    if (!req.session.userId) return res.status(401).send('Please log in to view your resume.');
+    if (req.session.role !== 'job_seeker') return res.status(403).send('Only job seekers can view this resume preview.');
+
+    db.query('SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?', [req.session.userId], async (err, rows) => {
+        try {
+            if (err) return res.status(500).send('Could not load your resume.');
+            const resumePath = rows[0]?.resume_path;
+            if (!resumePath) return res.status(404).send('No resume is saved to your profile.');
+
+            const extension = path.extname(resumePath).toLowerCase();
+            if (!['.doc', '.docx'].includes(extension)) {
+                return res.status(400).send('Only DOC and DOCX files use this preview.');
+            }
+
+            const uploadsDir = path.resolve('public/uploads');
+            const file = path.resolve('public', resumePath);
+            if (!file.startsWith(uploadsDir + path.sep) || !fs.existsSync(file)) {
+                return res.status(404).send('Your resume file could not be found.');
+            }
+            if (fs.statSync(file).size > 10 * 1024 * 1024) {
+                return res.status(413).send('Resume files must be 10 MB or smaller to preview.');
+            }
+
+            let documentHtml;
+            if (extension === '.docx') {
+                const converted = await mammoth.convertToHtml({ path: file });
+                documentHtml = converted.value;
+            } else {
+                const document = await new WordExtractor().extract(file);
+                const escapeHtml = (text) => text.replace(/[&<>"']/g, (character) => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+                })[character]);
+                documentHtml = document.getBody().split(/\r?\n\s*\r?\n/)
+                    .map((paragraph) => paragraph.trim())
+                    .filter(Boolean)
+                    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\r?\n/g, '<br>')}</p>`)
+                    .join('\n');
+            }
+
+            if (!documentHtml.trim()) return res.status(422).send('No readable text was found in this Word resume.');
+
+            res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self'");
+            res.set('X-Content-Type-Options', 'nosniff');
+            res.type('html').send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box}body{margin:0;padding:32px;background:#f3f4f6;color:#1f2937;font:14px/1.55 Arial,sans-serif}
+.page{max-width:800px;min-height:100%;margin:0 auto;padding:48px;background:#fff;box-shadow:0 1px 8px #0002;overflow-wrap:anywhere}
+h1,h2,h3{line-height:1.25}p{margin:0 0 12px}ul,ol{padding-left:24px}table{width:100%;border-collapse:collapse}td,th{padding:6px;border:1px solid #d1d5db}
+@media(max-width:600px){body{padding:0}.page{padding:24px}}
+</style></head><body><main class="page">${documentHtml}</main></body></html>`);
+        } catch (previewError) {
+            console.error('Resume preview error:', previewError);
+            res.status(422).send('Could not render this Word resume. Try saving it again as DOCX or PDF.');
+        }
+    });
+});
 
 // Test route
 app.get("/api/test", (req, res) => {
@@ -330,6 +443,8 @@ app.get("/api/profile", (req, res) => {
                 job_seeker_profiles.last_name,
                 job_seeker_profiles.phone,
                 job_seeker_profiles.location,
+                job_seeker_profiles.address,
+                job_seeker_profiles.postal_code,
                 job_seeker_profiles.about,
                 job_seeker_profiles.profile_picture,
                 job_seeker_profiles.resume_path
@@ -1263,35 +1378,174 @@ app.get("/api/jobs/:id", (req, res) => {
     });
 });
 
-app.post("/api/applications", (req, res) => {
+app.post("/api/applications", handleApplicationUploads, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const uploadedResume = req.files?.resume?.[0];
+    const uploadedCoverLetter = req.files?.coverLetter?.[0];
+    let unattachedFiles = [uploadedResume?.path, uploadedCoverLetter?.path].filter(Boolean);
+    let unattachedPrivateFiles = [];
+    const discardUnattachedFiles = () => {
+        unattachedFiles.forEach((filePath) => {
+            fs.unlink(filePath, (error) => {
+                if (error) console.error("Could not remove unused application document:", error);
+            });
+        });
+        unattachedFiles = [];
+        unattachedPrivateFiles.forEach((fileName) => {
+            try {
+                removeStoredResume(fileName, APPLICATION_RESUME_DIR);
+            } catch (error) {
+                console.error("Could not remove unused private application document:", error);
+            }
+        });
+        unattachedPrivateFiles = [];
+    };
 
     if (!req.session.userId) {
+        discardUnattachedFiles();
         return res.status(401).json({
             message: "Not logged in."
         });
     }
 
     if (req.session.role !== "job_seeker") {
+        discardUnattachedFiles();
         return res.status(403).json({
             message: "Only job seekers can apply for jobs."
         });
     }
 
-    const jobId = Number(req.body.jobId);
-    const coverNote = typeof req.body.coverNote === "string"
-        ? req.body.coverNote.trim()
+    const jobId = Number(body.jobId);
+    const coverNote = typeof body.coverNote === "string"
+        ? body.coverNote.trim()
         : "";
+    const applicationFields = {
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        phone: body.phone,
+        address: body.address,
+        postalCode: body.postalCode,
+        linkedinUrl: body.linkedinUrl,
+        portfolioUrl: body.portfolioUrl,
+        workAuthorization: body.workAuthorization,
+        availabilityDate: body.availabilityDate,
+        salaryMin: body.salaryMin,
+        salaryMax: body.salaryMax,
+        relevantExperience: body.relevantExperience
+    };
+    const fieldLimits = {
+        firstName: 100,
+        lastName: 100,
+        email: 255,
+        phone: 20,
+        address: 255,
+        postalCode: 20,
+        linkedinUrl: 500,
+        portfolioUrl: 500,
+        workAuthorization: 40,
+        availabilityDate: 10,
+        salaryMin: 16,
+        salaryMax: 16,
+        relevantExperience: 5000
+    };
+
+    for (const [field, value] of Object.entries(applicationFields)) {
+        if (typeof value !== "string" || value.trim().length > fieldLimits[field]) {
+            discardUnattachedFiles();
+            return res.status(400).json({ message: `Please check the ${field} field.` });
+        }
+        applicationFields[field] = value.trim();
+    }
+
+    if (!applicationFields.firstName || !applicationFields.lastName
+        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(applicationFields.email)) {
+        discardUnattachedFiles();
+        return res.status(400).json({
+            message: "First name, last name, and a valid email address are required."
+        });
+    }
+    if (applicationFields.workAuthorization
+        && !["authorized_no_sponsorship", "authorized_sponsorship", "not_authorized"]
+            .includes(applicationFields.workAuthorization)) {
+        discardUnattachedFiles();
+        return res.status(400).json({ message: "Choose a valid work authorization option." });
+    }
+
+    for (const field of ["linkedinUrl", "portfolioUrl"]) {
+        if (applicationFields[field]) {
+            let url;
+            try {
+                url = new URL(applicationFields[field]);
+            } catch {
+                discardUnattachedFiles();
+                return res.status(400).json({ message: `Enter a valid ${field === "linkedinUrl" ? "LinkedIn" : "portfolio"} URL.` });
+            }
+            if (!["http:", "https:"].includes(url.protocol)) {
+                discardUnattachedFiles();
+                return res.status(400).json({ message: "Professional links must use HTTP or HTTPS." });
+            }
+        }
+    }
+
+    if (applicationFields.availabilityDate) {
+        const parsedDate = new Date(`${applicationFields.availabilityDate}T00:00:00.000Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(applicationFields.availabilityDate)
+            || Number.isNaN(parsedDate.getTime())
+            || parsedDate.toISOString().slice(0, 10) !== applicationFields.availabilityDate) {
+            discardUnattachedFiles();
+            return res.status(400).json({ message: "Enter a valid earliest start date." });
+        }
+    }
+
+    const salaryPattern = /^\d{1,10}(?:\.\d{1,2})?$/;
+    const hasSalaryMin = Boolean(applicationFields.salaryMin);
+    const hasSalaryMax = Boolean(applicationFields.salaryMax);
+    if (hasSalaryMin !== hasSalaryMax
+        || (hasSalaryMin && (!salaryPattern.test(applicationFields.salaryMin)
+            || !salaryPattern.test(applicationFields.salaryMax)
+            || Number(applicationFields.salaryMin) > Number(applicationFields.salaryMax)))) {
+        discardUnattachedFiles();
+        return res.status(400).json({
+            message: "Enter a valid salary range with a minimum no greater than the maximum."
+        });
+    }
 
     if (!Number.isInteger(jobId) || jobId <= 0) {
+        discardUnattachedFiles();
         return res.status(400).json({
             message: "A valid job is required."
         });
     }
 
     if (coverNote.length > 2000) {
+        discardUnattachedFiles();
         return res.status(400).json({
             message: "The note must be 2000 characters or fewer."
         });
+    }
+
+    const resumeChoice = body.resumeChoice || "profile";
+    if (!["profile", "upload"].includes(resumeChoice)) {
+        discardUnattachedFiles();
+        return res.status(400).json({ message: "Choose a valid resume option." });
+    }
+    if (resumeChoice === "upload") {
+        const extension = uploadedResume && path.extname(uploadedResume.originalname).toLowerCase();
+        if (!uploadedResume || ![".pdf", ".doc", ".docx"].includes(extension)) {
+            discardUnattachedFiles();
+            return res.status(400).json({ message: "Please upload a PDF, DOC, or DOCX resume." });
+        }
+    } else if (uploadedResume) {
+        discardUnattachedFiles();
+        return res.status(400).json({
+            message: "An uploaded file does not match the selected resume option."
+        });
+    }
+    if (uploadedCoverLetter
+        && ![".pdf", ".doc", ".docx"].includes(path.extname(uploadedCoverLetter.originalname).toLowerCase())) {
+        discardUnattachedFiles();
+        return res.status(400).json({ message: "Additional documents must be PDF, DOC, or DOCX files." });
     }
 
     // Check availability on the server even if the seeker still has an old page open.
@@ -1302,24 +1556,153 @@ app.post("/api/applications", (req, res) => {
     `;
 
     db.query(jobSql, [jobId], (jobError, jobs) => {
-
         if (jobError) {
             console.error("Job lookup error:", jobError);
-
+            discardUnattachedFiles();
             return res.status(500).json({
                 message: "Could not submit application."
             });
         }
 
         if (jobs.length === 0) {
+            discardUnattachedFiles();
             return res.status(404).json({
                 message: "That job posting could not be found."
             });
         }
 
-        // Existing applications remain readable; only new submissions are blocked.
+        const createApplication = (snapshot, coverLetterPath) => {
+            if (snapshot.file && !unattachedPrivateFiles.includes(snapshot.file)) {
+                unattachedPrivateFiles.push(snapshot.file);
+            }
+            if (coverLetterPath && !unattachedPrivateFiles.includes(coverLetterPath)) {
+                unattachedPrivateFiles.push(coverLetterPath);
+            }
+
+            const insertSql = `
+                INSERT INTO applications (
+                    job_id, job_seeker_id, cover_note, cover_letter_path,
+                    first_name, last_name, email, phone, address, postal_code,
+                    linkedin_url, portfolio_url, work_authorization, availability_date,
+                    salary_min, salary_max, salary_currency, relevant_experience,
+                    submitted_resume_file, submitted_resume_original_name
+                )
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CAD', ?, ?, ?
+                FROM jobs
+                WHERE id = ? AND archived_at IS NULL
+                    AND (deadline_at IS NULL OR deadline_at > UTC_TIMESTAMP())
+            `;
+
+            db.query(
+                insertSql,
+                [
+                    jobId,
+                    req.session.userId,
+                    coverNote || null,
+                    coverLetterPath,
+                    applicationFields.firstName,
+                    applicationFields.lastName,
+                    applicationFields.email,
+                    applicationFields.phone || null,
+                    applicationFields.address || null,
+                    applicationFields.postalCode || null,
+                    applicationFields.linkedinUrl || null,
+                    applicationFields.portfolioUrl || null,
+                    applicationFields.workAuthorization || null,
+                    applicationFields.availabilityDate || null,
+                    hasSalaryMin ? Number(applicationFields.salaryMin) : null,
+                    hasSalaryMax ? Number(applicationFields.salaryMax) : null,
+                    applicationFields.relevantExperience || null,
+                    snapshot.file,
+                    snapshot.originalName,
+                    jobId
+                ],
+                (insertError, result) => {
+                    if (insertError) {
+                        discardUnattachedFiles();
+                        if (insertError.code === "ER_DUP_ENTRY") {
+                            return res.status(409).json({
+                                message: "You have already applied to this job."
+                            });
+                        }
+
+                        console.error("Application insert error:", insertError);
+                        return res.status(500).json({
+                            message: "Could not submit application."
+                        });
+                    }
+
+                    if (!result.affectedRows) {
+                        discardUnattachedFiles();
+                        return res.status(409).json({
+                            code: "POSTING_UNAVAILABLE",
+                            message: "This posting is no longer available for applications."
+                        });
+                    }
+
+                    unattachedFiles = [];
+                    unattachedPrivateFiles = [];
+                    res.status(201).json({
+                        message: "Application submitted successfully.",
+                        application: {
+                            id: result.insertId,
+                            jobId: jobId,
+                            status: "Applied",
+                            coverNote: coverNote || null,
+                            hasSubmittedResume: Boolean(snapshot.file),
+                            submittedResumeName: snapshot.originalName
+                        }
+                    });
+                }
+            );
+        };
+
         if (jobs[0].archived_at || jobs[0].deadline_passed) {
-            return res.status(409).json({ code: "POSTING_UNAVAILABLE", message: "This posting is archived or its deadline has passed and no longer accepts applications." });
+            discardUnattachedFiles();
+            return res.status(409).json({
+                code: "POSTING_UNAVAILABLE",
+                message: "This posting is archived or its deadline has passed and no longer accepts applications."
+            });
+        }
+
+        let coverLetterPath = null;
+        if (uploadedCoverLetter) {
+            try {
+                const storedCoverLetter = storeUploadedFile({
+                    sourcePath: uploadedCoverLetter.path,
+                    destinationRoot: APPLICATION_RESUME_DIR,
+                    originalName: uploadedCoverLetter.originalname
+                });
+                coverLetterPath = storedCoverLetter.file;
+                unattachedPrivateFiles.push(coverLetterPath);
+                unattachedFiles = unattachedFiles.filter((filePath) => filePath !== uploadedCoverLetter.path);
+            } catch (storageError) {
+                console.error("Additional document storage error:", storageError);
+                discardUnattachedFiles();
+                return res.status(500).json({
+                    message: "Could not attach the additional document."
+                });
+            }
+        }
+
+        if (resumeChoice === "upload") {
+            let snapshot;
+            try {
+                snapshot = storeUploadedFile({
+                    sourcePath: uploadedResume.path,
+                    destinationRoot: APPLICATION_RESUME_DIR,
+                    originalName: uploadedResume.originalname
+                });
+            } catch (snapshotError) {
+                console.error("Uploaded resume storage error:", snapshotError);
+                discardUnattachedFiles();
+                return res.status(500).json({
+                    message: "Could not attach your resume."
+                });
+            }
+            unattachedPrivateFiles.push(snapshot.file);
+            unattachedFiles = unattachedFiles.filter((filePath) => filePath !== uploadedResume.path);
+            return createApplication(snapshot, coverLetterPath);
         }
 
         db.query(
@@ -1345,71 +1728,20 @@ app.post("/api/applications", (req, res) => {
                     });
                 } catch (snapshotError) {
                     console.error("Resume snapshot error:", snapshotError);
-
+                    discardUnattachedFiles();
                     return res.status(500).json({
                         message: "Could not submit application."
                     });
                 }
 
-                const insert = applicationInsert(
-                    jobId,
-                    req.session.userId,
-                    coverNote,
-                    snapshot
-                );
-
-                db.query(insert.sql, insert.params, (insertError, result) => {
-
-                    if (insertError) {
-                        if (snapshot.file) {
-                            try {
-                                removeStoredResume(snapshot.file, APPLICATION_RESUME_DIR);
-                            } catch (cleanupError) {
-                                console.error("Resume snapshot cleanup error:", cleanupError);
-                            }
-                        }
-
-                        if (insertError.code === "ER_DUP_ENTRY") {
-                            return res.status(409).json({
-                                message: "You have already applied to this job."
-                            });
-                        }
-
-                        console.error("Application insert error:", insertError);
-
-                        return res.status(500).json({
-                            message: "Could not submit application."
-                        });
-                    }
-
-                    // An archive may happen while the resume is being copied. A guarded
-                    // insert then writes zero rows; remove its unused private resume copy.
-                    if (!result.affectedRows) {
-                        if (snapshot.file) {
-                            try {
-                                removeStoredResume(snapshot.file, APPLICATION_RESUME_DIR);
-                            } catch (cleanupError) {
-                                console.error("Unused resume cleanup error:", cleanupError);
-                            }
-                        }
-                        return res.status(409).json({
-                            code: "POSTING_UNAVAILABLE",
-                            message: "This posting is no longer available for applications."
-                        });
-                    }
-
-                    res.status(201).json({
-                        message: "Application submitted successfully.",
-                        application: {
-                            id: result.insertId,
-                            jobId: jobId,
-                            status: "Applied",
-                            coverNote: coverNote || null,
-                            hasSubmittedResume: Boolean(snapshot.file),
-                            submittedResumeName: snapshot.originalName
-                        }
+                if (snapshot.missing) {
+                    discardUnattachedFiles();
+                    return res.status(400).json({
+                        message: "Your profile resume could not be found. Upload it again or choose a file."
                     });
-                });
+                }
+
+                return createApplication(snapshot, coverLetterPath);
             }
         );
     });
@@ -1640,6 +1972,61 @@ app.get("/api/employer/applications/:id/resume", (req, res) => {
     );
 });
 
+app.get("/api/employer/applications/:id/additional-document", (req, res) => {
+    const denied = authorizeEmployer(req.session);
+
+    if (denied) {
+        return res.status(denied.status).json({
+            message: denied.message
+        });
+    }
+
+    const applicationId = Number(req.params.id);
+    if (!Number.isInteger(applicationId) || applicationId <= 0) {
+        return res.status(400).json({
+            message: "A valid application is required."
+        });
+    }
+
+    db.query(
+        EMPLOYER_ADDITIONAL_DOCUMENT_SQL,
+        [applicationId, req.session.userId],
+        (error, results) => {
+            if (error) {
+                console.error("Additional application document lookup error:", error);
+                return res.status(500).json({
+                    message: "Could not open that additional document."
+                });
+            }
+
+            const row = results[0] || null;
+            const accessError = canDownloadEmployerAdditionalDocument(req.session, row);
+            if (accessError) {
+                return res.status(accessError.status).json({
+                    message: accessError.message
+                });
+            }
+
+            const filePath = resolveStoredApplicationDocument(
+                row.cover_letter_path,
+                APPLICATION_RESUME_DIR,
+                PUBLIC_DIR
+            );
+            if (!filePath) {
+                return res.status(404).json({
+                    message: "The additional document is no longer available."
+                });
+            }
+
+            const fileName = path.basename(row.cover_letter_path)
+                .replace(/^\d+-[0-9a-f]{16}-/i, "")
+                .replace(/^\d+-/, "") || "additional-document";
+            res.set("Cache-Control", "private, no-store");
+            res.download(filePath, fileName);
+        }
+    );
+});
+
 app.put("/api/employer/applications/:id", (req, res) => {
 
     if (!req.session.userId) {
@@ -1789,7 +2176,7 @@ app.delete('/api/profile/avatar', (req, res) => {
 });
 
 // Upload resume
-app.post('/api/profile/resume', upload.single('resume'), (req, res) => {
+app.post('/api/profile/resume', resumeUpload.single('resume'), (req, res) => {
     if (!req.session.userId) return res.status(401).json({ message: 'Please log in first.' });
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
 
@@ -1841,6 +2228,46 @@ app.get('/api/candidates/:id', (req, res) => {
     );
 });
 
+function ensureSchema(database, done) {
+    database.query("SHOW COLUMNS FROM jobs LIKE 'archived_at'", (err, rows) => {
+        if (!err && rows && rows.length === 0) {
+            database.query("ALTER TABLE jobs ADD COLUMN archived_at TIMESTAMP NULL DEFAULT NULL", () => {
+                checkDeadline();
+            });
+        } else {
+            checkDeadline();
+        }
+    });
+
+    function checkDeadline() {
+        database.query("SHOW COLUMNS FROM jobs LIKE 'deadline_at'", (err, rows) => {
+            if (!err && rows && rows.length === 0) {
+                database.query("ALTER TABLE jobs ADD COLUMN deadline_at DATETIME NULL DEFAULT NULL", () => {
+                    database.query("CREATE INDEX jobs_deadline_at ON jobs (deadline_at)", () => {
+                        checkAppResumes();
+                    });
+                });
+            } else {
+                checkAppResumes();
+            }
+        });
+    }
+
+    function checkAppResumes() {
+        database.query("SHOW COLUMNS FROM applications LIKE 'submitted_resume_file'", (err, rows) => {
+            if (!err && rows && rows.length === 0) {
+                database.query("ALTER TABLE applications ADD COLUMN submitted_resume_file VARCHAR(255) DEFAULT NULL", () => {
+                    database.query("ALTER TABLE applications ADD COLUMN submitted_resume_original_name VARCHAR(255) DEFAULT NULL", () => {
+                        done();
+                    });
+                });
+            } else {
+                done();
+            }
+        });
+    }
+}
+
 // Start MySQL and the server only when running the application directly
 if (require.main === module) {
 
@@ -1852,17 +2279,18 @@ if (require.main === module) {
 
         console.log("Connected to MySQL database!");
 
-        // Start only in the real app; importing the server in tests starts no timer.
-        // Search and application writes also enforce deadlines between worker checks.
-        const stopDeadlineArchiver = startDeadlineArchiver(db);
-        const server = app.listen(PORT, () => {
-            console.log(`Server running at http://localhost:${PORT}`);
+        ensureSchema(db, () => {
+            // Start only in the real app; importing the server in tests starts no timer.
+            // Search and application writes also enforce deadlines between worker checks.
+            const stopDeadlineArchiver = startDeadlineArchiver(db);
+            const server = app.listen(PORT, () => {
+                console.log(`Server running at http://localhost:${PORT}`);
+            });
+            server.on("close", stopDeadlineArchiver);
         });
-        server.on("close", stopDeadlineArchiver);
     });
 
 }
 
 // Export the Express app for Jest and Supertest
 module.exports = app;
-

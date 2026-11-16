@@ -1,6 +1,10 @@
 # Database migrations
 
 `database.sql` is the starting schema. The migration
+`001_add_applications_and_resume_path.sql` updates older local databases with
+the applications table, profile address fields, resume attachments, and
+application details, including an optional additional application document.
+It also adds missing fields if an earlier version of the migration was already applied.
 `001_add_applications_and_resume_path.sql` updates older local databases
 that are missing the applications table or the resume_path column.
 `002_link_submitted_application_resumes.sql` adds nullable columns that
@@ -39,6 +43,8 @@ SOURCE new_code/migrations/001_add_applications_and_resume_path.sql;
 SOURCE new_code/migrations/002_link_submitted_application_resumes.sql;
 ```
 
+Run the migration on each database that needs these schema changes. Keep a private
+checklist of successfully applied filenames;
 Run each pending file once, in order, on each database. `001` adds the applications table and
 profile `resume_path` column. `002` adds the submitted-resume columns. Keep a private checklist of successfully applied filenames;
 there is no automatic migration runner or history table in this setup.
