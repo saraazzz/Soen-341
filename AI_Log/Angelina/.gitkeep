@@ -844,3 +844,60 @@ The script does not correct existing objects with different
 definitions; those require separate review.
 
 **Related pull request:** https://github.com/zayum20/Soen-341/pull/66
+
+## Entry 7 — Recruiter Applicant Review per Posting, Access Control, and Acceptance Testing
+
+**Task ID/Title:** Recruiter Dashboard & Applicant Review per Posting (Sprint 3 Checkpoint)
+
+**Date:** November 11, 2026  
+
+**Responsible Person:** Angelina Yajaira Montano  
+
+**AI Tool:** Antigravity (Gemini 3.8 Flash)  
+
+**Purpose of AI Use:** Architecture guidance, code modification for URL parameter routing, debugging test runtime issues, and authoring automated acceptance tests for security verification.
+
+### Prompt and context
+
+I provided the Sprint 3 guidelines and the Nov 5 kickoff checkpoint table where I owned recruiter applicant review, recruiter resume access control, and status filtering per job posting.
+
+My prompts:
+- “Can you guide me through what I have to update in the code for the soen341 based on the two contents of the two files I just sent?”
+- “I would like to update the most urgent thing and go in chronological order”
+- “What needs to be added and where in the code for employer_dashboard.js?”
+- “Before adding, what does this test exactly?”
+- “How to check the tests before committing the changes I made?”
+
+### AI-generated content
+
+The assistant provided:
+- Modifications to `Employer_Dashboard.js`: added an `actions` parameter to `addCard` and created a `View Applicants` link passing `job_id` via URL query parameter.
+- Modifications to `employer-applicants.js`: added URL parameter extraction (`new URLSearchParams`) and updated `renderApplicants` to filter by both `selectedJobId` and `statusFilter`.
+- Backend updates to `server/application-metrics.js`: included `applications.job_id` in `EMPLOYER_LIST_SQL` and mapped `job_id` in `presentEmployerApplication`.
+- Automated acceptance test in `test/sprint3-acceptance.test.js` checking:
+  1. 401 Unauthorized for unauthenticated access.
+  2. 403 Forbidden for non-employer roles.
+  3. Job owner authorization to access submitted resumes vs. rejection for third-party recruiters.
+  4. Backward compatibility rendering for legacy applications without attached resumes.
+- Terminal commands for troubleshooting MySQL binary path on macOS and executing migration `002`.
+
+### Validation
+
+1. **Automated Testing:** Ran `npm test` inside `new_code`. All 21 tests passed cleanly, including the new recruiter acceptance test.
+2. **Database Migration Verification:** Applied `002_link_submitted_application_resumes.sql` in local MySQL; confirmed column additions and resolved MySQL `ER_BAD_FIELD_ERROR`.
+3. **End-to-End Walkthrough:**
+   - Logged in as employer, navigated to dashboard, and clicked "View Applicants" on a specific job card (`employer-applicants.html?job_id=...`).
+   - Verified that only candidates applied to that job were displayed.
+   - Tested status filtering and saved an updated candidate status.
+   - Verified resume download as job owner, then opened the URL in an incognito window to verify `{"message": "Not logged in."}` (401).
+   - Confirmed legacy applications display "No resume was submitted with this application." without error.
+
+### Decision
+
+Accepted and integrated into branch `feature/recruiter-applicants-by-posting` and opened a pull request for team review and CI verification.
+
+### Reflection
+
+The combination of client-side query parameters and server-side SQL ownership constraints ensures both a smooth user experience (recruiters can view candidates per role) and strict security (recruiter A cannot access applicant resumes belonging to recruiter B). Adding automated acceptance tests ensures these security guarantees cannot regress in future sprints.
+
+**Related pull request:** `feature/recruiter-applicants-by-posting`
