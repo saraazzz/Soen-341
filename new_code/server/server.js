@@ -1756,6 +1756,9 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
             }
         );
     });
+};
+    });
+    });
 });
 
 app.get("/api/applications/mine", (req, res) => {
@@ -1840,6 +1843,7 @@ app.get("/api/applications/mine/analytics", (req, res) => {
         }
 
         res.json(summarizeApplications(visible.applications));
+    });
     });
 });
 
@@ -2009,6 +2013,7 @@ app.get("/api/employer/applications", (req, res) => {
         // Resume file keys stay on the server. Angelina's review page can use
         // has_submitted_resume and GET /api/employer/applications/:id/resume.
         res.json(results.map(presentEmployerApplication));
+    });
     });
 });
 
@@ -2240,10 +2245,46 @@ app.get('/api/candidates/:id', (req, res) => {
     );
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-});
+function ensureSchema(database, done) {
+    database.query("SHOW COLUMNS FROM jobs LIKE 'archived_at'", (err, rows) => {
+        if (!err && rows && rows.length === 0) {
+            database.query("ALTER TABLE jobs ADD COLUMN archived_at TIMESTAMP NULL DEFAULT NULL", () => {
+                checkDeadline();
+            });
+        } else {
+            checkDeadline();
+        }
+    });
+
+    function checkDeadline() {
+        database.query("SHOW COLUMNS FROM jobs LIKE 'deadline_at'", (err, rows) => {
+            if (!err && rows && rows.length === 0) {
+                database.query("ALTER TABLE jobs ADD COLUMN deadline_at DATETIME NULL DEFAULT NULL", () => {
+                    database.query("CREATE INDEX jobs_deadline_at ON jobs (deadline_at)", () => {
+                        checkAppResumes();
+                    });
+                });
+            } else {
+                checkAppResumes();
+            }
+        });
+    }
+
+    function checkAppResumes() {
+        database.query("SHOW COLUMNS FROM applications LIKE 'submitted_resume_file'", (err, rows) => {
+            if (!err && rows && rows.length === 0) {
+                database.query("ALTER TABLE applications ADD COLUMN submitted_resume_file VARCHAR(255) DEFAULT NULL", () => {
+                    database.query("ALTER TABLE applications ADD COLUMN submitted_resume_original_name VARCHAR(255) DEFAULT NULL", () => {
+                        done();
+                    });
+                });
+            } else {
+                done();
+            }
+        });
+    }
+}
+
 // Start MySQL and the server only when running the application directly
 if (require.main === module) {
 
@@ -2255,17 +2296,18 @@ if (require.main === module) {
 
         console.log("Connected to MySQL database!");
 
-        // Start only in the real app; importing the server in tests starts no timer.
-        // Search and application writes also enforce deadlines between worker checks.
-        const stopDeadlineArchiver = startDeadlineArchiver(db);
-        const server = app.listen(PORT, () => {
-            console.log(`Server running at http://localhost:${PORT}`);
+        ensureSchema(db, () => {
+            // Start only in the real app; importing the server in tests starts no timer.
+            // Search and application writes also enforce deadlines between worker checks.
+            const stopDeadlineArchiver = startDeadlineArchiver(db);
+            const server = app.listen(PORT, () => {
+                console.log(`Server running at http://localhost:${PORT}`);
+            });
+            server.on("close", stopDeadlineArchiver);
         });
-        server.on("close", stopDeadlineArchiver);
     });
 
 }
 
 // Export the Express app for Jest and Supertest
 module.exports = app;
-
