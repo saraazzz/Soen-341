@@ -1803,27 +1803,6 @@ app.get("/api/applications/mine/analytics", (req, res) => {
         });
     }
 
-    const sql = `
-        SELECT
-            applications.id,
-            applications.status,
-            applications.cover_note,
-            applications.resume_path,
-            applications.cover_letter_path,
-            applications.applied_at,
-            applications.updated_at,
-            jobs.title,
-            jobs.location,
-            jobs.job_type,
-            jobs.company AS company_name
-        FROM applications
-        JOIN jobs
-            ON applications.job_id = jobs.id
-        WHERE applications.job_seeker_id = ?
-        ORDER BY applications.applied_at DESC
-    `;
-
-    db.query(sql, [req.session.userId], (error, results) => {
     db.query(SEEKER_LIST_SQL, [req.session.userId], (error, results) => {
 
         if (error) {
@@ -1843,7 +1822,6 @@ app.get("/api/applications/mine/analytics", (req, res) => {
         }
 
         res.json(summarizeApplications(visible.applications));
-    });
     });
 });
 
@@ -1965,41 +1943,6 @@ app.get("/api/employer/applications", (req, res) => {
         });
     }
 
-    const sql = `
-        SELECT
-            applications.id,
-            applications.status,
-            applications.cover_note,
-            applications.resume_path,
-            applications.cover_letter_path,
-            applications.applied_at,
-            jobs.title AS job_title,
-            COALESCE(applications.email, users.email) AS email,
-            COALESCE(applications.first_name, job_seeker_profiles.first_name) AS first_name,
-            COALESCE(applications.last_name, job_seeker_profiles.last_name) AS last_name,
-            COALESCE(applications.phone, job_seeker_profiles.phone) AS phone,
-            COALESCE(applications.address, job_seeker_profiles.address) AS address,
-            COALESCE(applications.postal_code, job_seeker_profiles.postal_code) AS postal_code,
-            applications.linkedin_url,
-            applications.portfolio_url,
-            applications.work_authorization,
-            applications.availability_date,
-            applications.salary_min,
-            applications.salary_max,
-            applications.salary_currency,
-            applications.relevant_experience
-        FROM applications
-        JOIN jobs
-            ON applications.job_id = jobs.id
-        JOIN users
-            ON applications.job_seeker_id = users.id
-        LEFT JOIN job_seeker_profiles
-            ON users.id = job_seeker_profiles.user_id
-        WHERE jobs.employer_id = ?
-        ORDER BY applications.applied_at DESC
-    `;
-
-    db.query(sql, [req.session.userId], (error, results) => {
     db.query(EMPLOYER_LIST_SQL, [req.session.userId], (error, results) => {
 
         if (error) {
@@ -2013,7 +1956,6 @@ app.get("/api/employer/applications", (req, res) => {
         // Resume file keys stay on the server. Angelina's review page can use
         // has_submitted_resume and GET /api/employer/applications/:id/resume.
         res.json(results.map(presentEmployerApplication));
-    });
     });
 });
 
