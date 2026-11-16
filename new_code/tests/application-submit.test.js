@@ -57,6 +57,11 @@ test("a profile-resume application checks availability and inserts only once", a
         insertParams = params;
         callback(null, { affectedRows: 1, insertId: 101 });
     });
+    db.query.mockImplementationOnce((sql, params, callback) => {
+        expect(sql).toContain("SELECT employer_id, title FROM jobs");
+        expect(params).toEqual([7]);
+        callback(null, [{ employer_id: 99, title: "Senior Platform Engineer" }]);
+    });
 
     const response = await agent.post("/api/applications").send({
         jobId: 7,
@@ -87,7 +92,7 @@ test("a profile-resume application checks availability and inserts only once", a
         null, null, null, null, null, null, 7
     ]);
     expect(response.body.application.id).toBe(101);
-    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query).toHaveBeenCalledTimes(4);
 });
 
 test("an uploaded additional document stays private and is downloadable by its employer", async () => {
@@ -101,6 +106,11 @@ test("an uploaded additional document stays private and is downloadable by its e
     db.query.mockImplementationOnce((sql, params, callback) => {
         insertParams = params;
         callback(null, { affectedRows: 1, insertId: 101 });
+    });
+    db.query.mockImplementationOnce((sql, params, callback) => {
+        expect(sql).toContain("SELECT employer_id, title FROM jobs");
+        expect(params).toEqual([7]);
+        callback(null, [{ employer_id: 99, title: "Senior Platform Engineer" }]);
     });
 
     const response = await seeker.post("/api/applications")
