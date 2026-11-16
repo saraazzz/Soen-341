@@ -84,11 +84,6 @@
                     <div id="notification-list" class="notification-list">
                         <div class="notification-empty">Loading notifications...</div>
                     </div>
-                    <div class="notification-dropdown-footer">
-                        <button id="demo-seed-btn" class="demo-seed-btn" type="button" title="Seed an upcoming deadline reminder to test during evaluation">
-                            + Seed Deadline Demo
-                        </button>
-                    </div>
                 </div>
             `;
 
@@ -120,14 +115,6 @@
                 markAllBtn.addEventListener("click", (e) => {
                     e.stopPropagation();
                     this.markAllAsRead();
-                });
-            }
-
-            const demoSeedBtn = this.container.querySelector("#demo-seed-btn");
-            if (demoSeedBtn) {
-                demoSeedBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    this.seedDeadlineDemo();
                 });
             }
 
@@ -274,17 +261,6 @@
             }
         }
 
-        async seedDeadlineDemo() {
-            try {
-                const response = await fetch("/api/notifications/seed-deadline", { method: "POST" });
-                if (response.ok) {
-                    await this.fetchNotifications();
-                    if (!this.isOpen) this.openDropdown();
-                }
-            } catch (err) {
-                console.error("Error seeding deadline demo:", err);
-            }
-        }
     }
 
     // Initialize once DOM is ready

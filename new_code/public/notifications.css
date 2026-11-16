@@ -213,27 +213,3 @@
     font-size: 13.5px;
 }
 
-.notification-dropdown-footer {
-    padding: 10px 16px;
-    border-top: 1px solid #f1f5f9;
-    text-align: center;
-    background: #fafaf9;
-}
-
-.demo-seed-btn {
-    background: none;
-    border: 1px dashed #cbd5e1;
-    border-radius: 6px;
-    padding: 5px 12px;
-    font-size: 11.5px;
-    font-weight: 600;
-    color: #64748b;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.demo-seed-btn:hover {
-    border-color: #7222ac;
-    color: #7222ac;
-    background: #faf5ff;
-}
