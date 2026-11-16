@@ -40,6 +40,11 @@ const {
     EMPLOYER_LIST_SQL,
     EMPLOYER_RESUME_SQL
 } = require("./application-metrics");
+const {
+    ensureNotificationsTable,
+    createNotification,
+    checkAndNotifyDeadlines
+} = require("./notifications");
 const app = express();
 const PORT = 3000;
 
@@ -60,7 +65,7 @@ app.use(express.static("public"));
 
  // MySQL connection
 const db = mysql.createConnection({
-    host: process.env.DB_HOST || "localhost",
+    host: process.env.DB_HOST || "127.0.0.1",
     port: Number(process.env.DB_PORT || 3306),
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASSWORD || "",
@@ -1381,6 +1386,23 @@ app.post("/api/applications", (req, res) => {
                         });
                     }
 
+                    // Notify recruiter about the new application (Event 1)
+                    db.query(
+                        "SELECT employer_id, title FROM jobs WHERE id = ?",
+                        [jobId],
+                        (jobLookupErr, jobLookupRows) => {
+                            if (!jobLookupErr && jobLookupRows && jobLookupRows.length > 0) {
+                                createNotification(db, {
+                                    userId: jobLookupRows[0].employer_id,
+                                    type: 'new_application',
+                                    title: 'New Application Received',
+                                    message: `A candidate submitted an application for "${jobLookupRows[0].title}".`,
+                                    link: `employer-applicants.html?job_id=${jobId}`
+                                }).catch(() => {});
+                            }
+                        }
+                    );
+
                     res.status(201).json({
                         message: "Application submitted successfully.",
                         application: {
@@ -1653,7 +1675,7 @@ app.put("/api/employer/applications/:id", (req, res) => {
     }
 
     const ownershipSql = `
-        SELECT applications.id
+        SELECT applications.id, applications.job_seeker_id, jobs.id AS job_id, jobs.title, jobs.company
         FROM applications
         JOIN jobs
             ON applications.job_id = jobs.id
@@ -1697,6 +1719,41 @@ app.put("/api/employer/applications/:id", (req, res) => {
                         return res.status(500).json({
                             message: "Could not update application status."
                         });
+                    }
+
+                    // Send notification to the job seeker
+                    const seekerId = owned[0].job_seeker_id;
+                    const jobTitle = owned[0].title || "Job Posting";
+                    const companyName = owned[0].company || "Company";
+                    const targetJobId = owned[0].job_id;
+
+                    if (status === "Interview") {
+                        // Event 3: Interview invitation -> seeker (links to job description page)
+                        createNotification(db, {
+                            userId: seekerId,
+                            type: 'interview_invite',
+                            title: 'Interview Invitation',
+                            message: `🎉 Great news! You have been invited to an interview for ${jobTitle} at ${companyName}!`,
+                            link: `job.html?id=${targetJobId}`
+                        }).catch(() => {});
+                    } else if (status === "Offered") {
+                        // Job Offer -> seeker (links to job description page)
+                        createNotification(db, {
+                            userId: seekerId,
+                            type: 'job_offer',
+                            title: 'Job Offer Received!',
+                            message: `🎊 Congratulations! You have received a job offer for ${jobTitle} at ${companyName}!`,
+                            link: `job.html?id=${targetJobId}`
+                        }).catch(() => {});
+                    } else {
+                        // Event 2: Status update -> seeker
+                        createNotification(db, {
+                            userId: seekerId,
+                            type: 'status_update',
+                            title: 'Application Status Updated',
+                            message: `Your application for ${jobTitle} at ${companyName} was updated to "${status}".`,
+                            link: `my-applications.html`
+                        }).catch(() => {});
                     }
 
                     res.json({
@@ -1824,6 +1881,108 @@ app.get('/api/candidates/:id', (req, res) => {
     );
 });
 
+// ==========================================
+// Notifications & Reminders API
+// ==========================================
+app.get("/api/notifications", (req, res) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ message: "Not logged in." });
+    }
+
+    const userId = req.session.userId;
+
+    // Check approaching deadlines if job seeker
+    if (req.session.role === "job_seeker") {
+        checkAndNotifyDeadlines(db, userId);
+    }
+
+    const sql = `
+        SELECT id, type, title, message, link, is_read, created_at
+        FROM notifications
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 25
+    `;
+
+    db.query(sql, [userId], (err, rows) => {
+        if (err) {
+            console.error("Fetch notifications error:", err);
+            return res.status(500).json({ message: "Could not fetch notifications." });
+        }
+
+        const unreadCount = rows.filter(n => !n.is_read).length;
+        res.json({
+            notifications: rows,
+            unreadCount: unreadCount
+        });
+    });
+});
+
+app.put("/api/notifications/:id/read", (req, res) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ message: "Not logged in." });
+    }
+
+    const notificationId = Number(req.params.id);
+    if (!Number.isInteger(notificationId) || notificationId <= 0) {
+        return res.status(400).json({ message: "Invalid notification ID." });
+    }
+
+    const sql = `
+        UPDATE notifications
+        SET is_read = 1
+        WHERE id = ? AND user_id = ?
+    `;
+
+    db.query(sql, [notificationId, req.session.userId], (err) => {
+        if (err) {
+            console.error("Mark notification read error:", err);
+            return res.status(500).json({ message: "Could not update notification." });
+        }
+        res.json({ message: "Notification marked as read." });
+    });
+});
+
+app.put("/api/notifications/read-all", (req, res) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ message: "Not logged in." });
+    }
+
+    const sql = `
+        UPDATE notifications
+        SET is_read = 1
+        WHERE user_id = ?
+    `;
+
+    db.query(sql, [req.session.userId], (err) => {
+        if (err) {
+            console.error("Mark all notifications read error:", err);
+            return res.status(500).json({ message: "Could not mark notifications as read." });
+        }
+        res.json({ message: "All notifications marked as read." });
+    });
+});
+
+// Seed an upcoming deadline notification for demonstration / meeting validation
+app.post("/api/notifications/seed-deadline", (req, res) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ message: "Not logged in." });
+    }
+
+    createNotification(db, {
+        userId: req.session.userId,
+        type: 'deadline_reminder',
+        title: 'Application Deadline Approaching',
+        message: '⏰ Reminder: Application deadline for Senior Platform Engineer at CloudTech is tomorrow! Submit your application today.',
+        link: 'jobs.html'
+    }).then(() => {
+        res.json({ message: "Sample deadline reminder generated successfully." });
+    }).catch((err) => {
+        console.error("Seed deadline error:", err);
+        res.status(500).json({ message: "Could not seed deadline reminder." });
+    });
+});
+
 // Start MySQL and the server only when running the application directly
 if (require.main === module) {
 
@@ -1834,6 +1993,7 @@ if (require.main === module) {
         }
 
         console.log("Connected to MySQL database!");
+        ensureNotificationsTable(db);
 
         app.listen(PORT, () => {
             console.log(`Server running at http://localhost:${PORT}`);

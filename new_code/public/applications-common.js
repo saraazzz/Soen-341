@@ -96,3 +96,10 @@ async function requireRole(expectedRole, wrongRolePage) {
 
     return profile;
 }
+
+// Automatically load notification manager on pages sharing common navigation
+if (!document.querySelector('script[src*="notifications.js"]')) {
+    const notifScript = document.createElement("script");
+    notifScript.src = "notifications.js";
+    document.body.appendChild(notifScript);
+}
