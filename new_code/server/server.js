@@ -51,6 +51,31 @@ const handleApplicationUploads = (req, res, next) => {
         next();
     });
 };
+const {
+    PUBLIC_DIR,
+    APPLICATION_RESUME_DIR,
+    snapshotProfileResume,
+    resolveStoredResume,
+    removeStoredResume,
+    unlinkPublicUpload
+} = require("./application-resumes");
+const {
+    authorizeSeeker,
+    authorizeEmployer,
+    selectVisibleApplications,
+    selectVisibleApplication,
+    canDownloadSubmittedResume,
+    summarizeApplications,
+    applicationInsert,
+    presentEmployerApplication,
+    SEEKER_LIST_SQL,
+    SEEKER_DETAIL_SQL,
+    SEEKER_RESUME_SQL,
+    EMPLOYER_LIST_SQL,
+    EMPLOYER_RESUME_SQL
+} = require("./application-metrics");
+const { parseDeadline } = require("./posting-deadlines");
+const { startDeadlineArchiver } = require("./deadline-archiver");
 const app = express();
 const PORT = 3000;
 
@@ -140,17 +165,6 @@ h1,h2,h3{line-height:1.25}p{margin:0 0 12px}ul,ol{padding-left:24px}table{width:
             res.status(422).send('Could not render this Word resume. Try saving it again as DOCX or PDF.');
         }
     });
-});
-
-// Connect to MySQL
-db.connect((error) => {
-
-    if (error) {
-        console.error("MySQL connection failed:", error);
-        return;
-    }
-
-    console.log("Connected to MySQL database!");
 });
 
 // Test route
@@ -1057,10 +1071,15 @@ app.post("/api/jobs", (req, res) => {
         });
     }
 
+    // Blank deadlines stay open indefinitely; validate Toronto dates before writing.
+    let deadline;
+    try { deadline = parseDeadline(req.body.application_deadline); }
+    catch (error) { return res.status(400).json({ message: error.message }); }
+
     //Insert into the jobs table for the database
     const sql=`
-        INSERT INTO jobs (employer_id, title, company, location, category, job_type, description)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO jobs (employer_id, title, company, location, category, job_type, description, deadline_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
@@ -1072,7 +1091,8 @@ app.post("/api/jobs", (req, res) => {
             location.trim(),
             category.trim(),
             job_type,
-            description.trim()
+            description.trim(),
+            deadline
         ],
 
     (error,result)=>{
@@ -1104,6 +1124,61 @@ app.post("/api/jobs", (req, res) => {
 
     
 
+// Archiving preserves the job row and its applications. Only its owner may archive it.
+app.put("/api/jobs/:id/archive", (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ message: "Not logged in." });
+    if (req.session.role !== "employer") return res.status(403).json({ message: "Only employers can archive postings." });
+    const id = Number(req.params.id);
+    if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+        return res.status(400).json({ message: "Invalid posting ID." });
+    }
+    // COALESCE keeps the original archive date when the same request is repeated.
+    db.query(`UPDATE jobs SET archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP)
+        WHERE id = ? AND employer_id = ?`, [id, req.session.userId], (error, result) => {
+        if (error) return res.status(500).json({ message: "Could not archive posting." });
+        if (!result.affectedRows) return res.status(404).json({ message: "Posting not found." });
+        return res.json({ message: "Posting archived successfully.", jobID: id });
+    });
+});
+
+// Update only editable posting fields; ownership is enforced in both queries.
+app.put("/api/jobs/:id", (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ message: "Not logged in." });
+    if (req.session.role !== "employer") return res.status(403).json({ message: "Only employers can edit postings." });
+    const id = Number(req.params.id);
+    if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+        return res.status(400).json({ message: "Invalid posting ID." });
+    }
+    const fields = ["title", "company", "location", "category", "job_type", "description"];
+    const values = fields.map(field => req.body?.[field]);
+    if (values.some(value => typeof value !== "string" || !value.trim())) {
+        return res.status(400).json({ message: "All posting fields are required." });
+    }
+    const trimmed = values.map(value => value.trim());
+    if (trimmed.slice(0, 3).some(value => value.length > 255) || trimmed[3].length > 100 ||
+        Buffer.byteLength(trimmed[5], "utf8") > 65535 ||
+        !["Full-time", "Part-time", "Contract", "Internship"].includes(trimmed[4])) {
+        return res.status(400).json({ message: "Invalid posting fields or job type." });
+    }
+    // Omitted deadline preserves the saved value; explicit blank removes it.
+    const changeDeadline = Object.hasOwn(req.body, "application_deadline");
+    let deadline = null;
+    try { if (changeDeadline) deadline = parseDeadline(req.body.application_deadline); }
+    catch (error) { return res.status(400).json({ message: error.message }); }
+    const owner = req.session.userId;
+    db.query("SELECT id FROM jobs WHERE id = ? AND employer_id = ?", [id, owner], (error, rows) => {
+        if (error) return res.status(500).json({ message: "Could not load posting." });
+        if (!rows.length) return res.status(404).json({ message: "Posting not found." });
+        db.query(`UPDATE jobs SET title = ?, company = ?, location = ?, category = ?, job_type = ?, description = ?,
+            deadline_at = CASE WHEN ? THEN ? ELSE deadline_at END
+            WHERE id = ? AND employer_id = ?`, [...trimmed, changeDeadline, deadline, id, owner], (updateError, result) => {
+            if (updateError) return res.status(500).json({ message: "Could not save posting." });
+            if (!result.affectedRows) return res.status(404).json({ message: "Posting not found." });
+            return res.json({ message: "Posting updated successfully.", jobID: id });
+        });
+    });
+});
+
 const APPLICATION_STATUSES = [
     "Applied",
     "Under Review",
@@ -1130,7 +1205,9 @@ app.get("/api/jobs", (req, res) => {
             jobs.created_at,
             jobs.company AS company_name
         FROM jobs
-        WHERE (
+        -- Archived jobs stay in the database but disappear from seeker search.
+        WHERE jobs.archived_at IS NULL
+            AND (jobs.deadline_at IS NULL OR jobs.deadline_at > UTC_TIMESTAMP()) AND (
                 ? = ''
                 OR jobs.title LIKE ?
                 OR jobs.location LIKE ?
@@ -1174,8 +1251,11 @@ app.get("/api/employer/jobs", (req, res) => {
         });
     }
 
+    // Include every editable field so the posting form can restore the saved values.
     const sql = `
-        SELECT id, title, location, job_type, description, 'open' AS status, created_at
+        SELECT id, title, company, location, category, job_type, description, archived_at,
+            DATE_FORMAT(deadline_at, '%Y-%m-%dT%H:%i:%sZ') AS deadline_at,
+            CASE WHEN archived_at IS NULL AND (deadline_at IS NULL OR deadline_at > UTC_TIMESTAMP()) THEN 'open' ELSE 'archived' END AS status, created_at
         FROM jobs
         WHERE employer_id = ?
         ORDER BY created_at DESC
@@ -1212,7 +1292,8 @@ app.get("/api/jobs/:id", (req, res) => {
             jobs.location,
             jobs.job_type,
             jobs.description,
-            'open' AS status,
+            DATE_FORMAT(jobs.deadline_at, '%Y-%m-%dT%H:%i:%sZ') AS deadline_at,
+            CASE WHEN jobs.archived_at IS NULL AND (jobs.deadline_at IS NULL OR jobs.deadline_at > UTC_TIMESTAMP()) THEN 'open' ELSE 'archived' END AS status,
             jobs.created_at,
             jobs.company AS company_name
         FROM jobs
@@ -1442,8 +1523,9 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
         return res.status(400).json({ message: "Additional documents must be PDF, DOC, or DOCX files." });
     }
 
+    // Check availability on the server even if the seeker still has an old page open.
     const jobSql = `
-        SELECT id
+        SELECT id, archived_at, (deadline_at IS NOT NULL AND deadline_at <= UTC_TIMESTAMP()) AS deadline_passed
         FROM jobs
         WHERE id = ?
     `;
@@ -1534,6 +1616,34 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
         if (resumeChoice === "upload") {
             return createApplication(`uploads/${uploadedResume.filename}`, coverLetterPath);
         }
+        // Existing applications remain readable; only new submissions are blocked.
+        if (jobs[0].archived_at || jobs[0].deadline_passed) {
+            return res.status(409).json({ code: "POSTING_UNAVAILABLE", message: "This posting is archived or its deadline has passed and no longer accepts applications." });
+        }
+
+        db.query(
+            "SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?",
+            [req.session.userId],
+            (resumeError, profiles) => {
+
+                if (resumeError) {
+                    console.error("Resume lookup error:", resumeError);
+
+                    return res.status(500).json({
+                        message: "Could not submit application."
+                    });
+                }
+
+                let snapshot;
+
+                try {
+                    snapshot = snapshotProfileResume({
+                        sourceRelativePath: profiles[0] && profiles[0].resume_path,
+                        sourceRoot: PUBLIC_DIR,
+                        destinationRoot: APPLICATION_RESUME_DIR
+                    });
+                } catch (snapshotError) {
+                    console.error("Resume snapshot error:", snapshotError);
 
         db.query(
             "SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?",
@@ -1584,6 +1694,64 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
 
                     unattachedFiles.push(applicationResumeFile);
                     createApplication(`uploads/${applicationResumeName}`, coverLetterPath);
+                const insert = applicationInsert(
+                    jobId,
+                    req.session.userId,
+                    coverNote,
+                    snapshot
+                );
+
+                db.query(insert.sql, insert.params, (insertError, result) => {
+
+                    if (insertError) {
+                        if (snapshot.file) {
+                            try {
+                                removeStoredResume(snapshot.file, APPLICATION_RESUME_DIR);
+                            } catch (cleanupError) {
+                                console.error("Resume snapshot cleanup error:", cleanupError);
+                            }
+                        }
+
+                        if (insertError.code === "ER_DUP_ENTRY") {
+                            return res.status(409).json({
+                                message: "You have already applied to this job."
+                            });
+                        }
+
+                        console.error("Application insert error:", insertError);
+
+                        return res.status(500).json({
+                            message: "Could not submit application."
+                        });
+                    }
+
+                    // An archive may happen while the resume is being copied. A guarded
+                    // insert then writes zero rows; remove its unused private resume copy.
+                    if (!result.affectedRows) {
+                        if (snapshot.file) {
+                            try {
+                                removeStoredResume(snapshot.file, APPLICATION_RESUME_DIR);
+                            } catch (cleanupError) {
+                                console.error("Unused resume cleanup error:", cleanupError);
+                            }
+                        }
+                        return res.status(409).json({
+                            code: "POSTING_UNAVAILABLE",
+                            message: "This posting is no longer available for applications."
+                        });
+                    }
+
+                    res.status(201).json({
+                        message: "Application submitted successfully.",
+                        application: {
+                            id: result.insertId,
+                            jobId: jobId,
+                            status: "Applied",
+                            coverNote: coverNote || null,
+                            hasSubmittedResume: Boolean(snapshot.file),
+                            submittedResumeName: snapshot.originalName
+                        }
+                    });
                 });
             }
         );
@@ -1592,15 +1760,43 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
 
 app.get("/api/applications/mine", (req, res) => {
 
-    if (!req.session.userId) {
-        return res.status(401).json({
-            message: "Not logged in."
+    const denied = authorizeSeeker(req.session);
+
+    if (denied) {
+        return res.status(denied.status).json({
+            message: denied.message
         });
     }
 
-    if (req.session.role !== "job_seeker") {
-        return res.status(403).json({
-            message: "Only job seekers can view their applications."
+    db.query(SEEKER_LIST_SQL, [req.session.userId], (error, results) => {
+
+        if (error) {
+            console.error("Application list error:", error);
+
+            return res.status(500).json({
+                message: "Could not load your applications."
+            });
+        }
+
+        const visible = selectVisibleApplications(req.session, results);
+
+        if (visible.error) {
+            return res.status(visible.error.status).json({
+                message: visible.error.message
+            });
+        }
+
+        res.json(visible.applications);
+    });
+});
+
+app.get("/api/applications/mine/analytics", (req, res) => {
+
+    const denied = authorizeSeeker(req.session);
+
+    if (denied) {
+        return res.status(denied.status).json({
+            message: denied.message
         });
     }
 
@@ -1625,17 +1821,130 @@ app.get("/api/applications/mine", (req, res) => {
     `;
 
     db.query(sql, [req.session.userId], (error, results) => {
+    db.query(SEEKER_LIST_SQL, [req.session.userId], (error, results) => {
 
         if (error) {
-            console.error("Application list error:", error);
+            console.error("Application analytics error:", error);
 
             return res.status(500).json({
                 message: "Could not load your applications."
             });
         }
 
-        res.json(results);
+        const visible = selectVisibleApplications(req.session, results);
+
+        if (visible.error) {
+            return res.status(visible.error.status).json({
+                message: visible.error.message
+            });
+        }
+
+        res.json(summarizeApplications(visible.applications));
     });
+});
+
+app.get("/api/applications/:id", (req, res) => {
+
+    const denied = authorizeSeeker(req.session);
+
+    if (denied) {
+        return res.status(denied.status).json({
+            message: denied.message
+        });
+    }
+
+    const applicationId = Number(req.params.id);
+
+    if (!Number.isInteger(applicationId) || applicationId <= 0) {
+        return res.status(400).json({
+            message: "A valid application is required."
+        });
+    }
+
+    db.query(
+        SEEKER_DETAIL_SQL,
+        [applicationId, req.session.userId],
+        (error, results) => {
+
+            if (error) {
+                console.error("Application detail error:", error);
+
+                return res.status(500).json({
+                    message: "Could not load that application."
+                });
+            }
+
+            const visible = selectVisibleApplication(req.session, results[0] || null);
+
+            if (visible.error) {
+                return res.status(visible.error.status).json({
+                    message: visible.error.message
+                });
+            }
+
+            res.json(visible.application);
+        }
+    );
+});
+
+function sendSubmittedResume(req, res, sql, params, audience) {
+    db.query(sql, params, (error, results) => {
+
+        if (error) {
+            console.error("Submitted resume lookup error:", error);
+
+            return res.status(500).json({
+                message: "Could not open that resume."
+            });
+        }
+
+        const row = results[0] || null;
+        const denied = canDownloadSubmittedResume(req.session, row, audience);
+
+        if (denied) {
+            return res.status(denied.status).json({
+                message: denied.message
+            });
+        }
+
+        const filePath = resolveStoredResume(row.submitted_resume_file, APPLICATION_RESUME_DIR);
+
+        if (!filePath) {
+            return res.status(404).json({
+                message: "The submitted resume file is no longer available."
+            });
+        }
+
+        res.set("Cache-Control", "private, no-store");
+        res.download(filePath, row.submitted_resume_original_name || "resume");
+    });
+}
+
+app.get("/api/applications/:id/resume", (req, res) => {
+
+    const denied = authorizeSeeker(req.session);
+
+    if (denied) {
+        return res.status(denied.status).json({
+            message: denied.message
+        });
+    }
+
+    const applicationId = Number(req.params.id);
+
+    if (!Number.isInteger(applicationId) || applicationId <= 0) {
+        return res.status(400).json({
+            message: "A valid application is required."
+        });
+    }
+
+    sendSubmittedResume(
+        req,
+        res,
+        SEEKER_RESUME_SQL,
+        [applicationId, req.session.userId],
+        "seeker"
+    );
 });
 
 app.get("/api/employer/applications", (req, res) => {
@@ -1687,6 +1996,7 @@ app.get("/api/employer/applications", (req, res) => {
     `;
 
     db.query(sql, [req.session.userId], (error, results) => {
+    db.query(EMPLOYER_LIST_SQL, [req.session.userId], (error, results) => {
 
         if (error) {
             console.error("Employer application list error:", error);
@@ -1696,8 +2006,37 @@ app.get("/api/employer/applications", (req, res) => {
             });
         }
 
-        res.json(results);
+        // Resume file keys stay on the server. Angelina's review page can use
+        // has_submitted_resume and GET /api/employer/applications/:id/resume.
+        res.json(results.map(presentEmployerApplication));
     });
+});
+
+app.get("/api/employer/applications/:id/resume", (req, res) => {
+
+    const denied = authorizeEmployer(req.session);
+
+    if (denied) {
+        return res.status(denied.status).json({
+            message: denied.message
+        });
+    }
+
+    const applicationId = Number(req.params.id);
+
+    if (!Number.isInteger(applicationId) || applicationId <= 0) {
+        return res.status(400).json({
+            message: "A valid application is required."
+        });
+    }
+
+    sendSubmittedResume(
+        req,
+        res,
+        EMPLOYER_RESUME_SQL,
+        [applicationId, req.session.userId],
+        "employer"
+    );
 });
 
 app.put("/api/employer/applications/:id", (req, res) => {
@@ -1856,8 +2195,9 @@ app.post('/api/profile/resume', resumeUpload.single('resume'), (req, res) => {
     // Delete old resume file if one exists
     db.query('SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?', [req.session.userId], (err, rows) => {
         const oldResume = rows[0]?.resume_path;
+        // Remove only the profile file. Submitted application copies live outside public/.
         if (oldResume) {
-            fs.unlink(path.join('public', oldResume), () => {});
+            unlinkPublicUpload(oldResume, PUBLIC_DIR);
         }
 
         // Save new resume path to MySQL
@@ -1880,7 +2220,7 @@ app.delete('/api/profile/resume', (req, res) => {
     db.query('SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?', [req.session.userId], (err, rows) => {
         const resumePath = rows[0]?.resume_path;
         if (resumePath) {
-            fs.unlink(path.join('public', resumePath), () => {});
+            unlinkPublicUpload(resumePath, PUBLIC_DIR);
         }
 
         db.query('UPDATE job_seeker_profiles SET resume_path = NULL WHERE user_id = ?', [req.session.userId], (err) => {
@@ -1904,3 +2244,28 @@ app.get('/api/candidates/:id', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 });
+// Start MySQL and the server only when running the application directly
+if (require.main === module) {
+
+    db.connect((error) => {
+        if (error) {
+            console.error("MySQL connection failed:", error);
+            return;
+        }
+
+        console.log("Connected to MySQL database!");
+
+        // Start only in the real app; importing the server in tests starts no timer.
+        // Search and application writes also enforce deadlines between worker checks.
+        const stopDeadlineArchiver = startDeadlineArchiver(db);
+        const server = app.listen(PORT, () => {
+            console.log(`Server running at http://localhost:${PORT}`);
+        });
+        server.on("close", stopDeadlineArchiver);
+    });
+
+}
+
+// Export the Express app for Jest and Supertest
+module.exports = app;
+
