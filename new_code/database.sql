@@ -116,6 +116,8 @@ CREATE TABLE `applications` (
   `salary_max` decimal(12,2) DEFAULT NULL,
   `salary_currency` char(3) NOT NULL DEFAULT 'CAD',
   `relevant_experience` text,
+  `submitted_resume_file` varchar(255) DEFAULT NULL,
+  `submitted_resume_original_name` varchar(255) DEFAULT NULL,
   `applied_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

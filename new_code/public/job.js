@@ -16,11 +16,12 @@ function showApplyError(message) {
     applyError.textContent = message;
 }
 
-function showConfirmation(heading, status) {
+function showConfirmation(heading, status, resumeNote) {
     confirmation.hidden = false;
     confirmation.innerHTML = `
         <h2>${escapeHtml(heading)}</h2>
         <p>Status: ${statusBadge(status)}</p>
+        ${resumeNote ? `<p>${escapeHtml(resumeNote)}</p>` : ""}
         <p><a href="my-applications.html">View my applications</a></p>
     `;
 }
@@ -122,5 +123,73 @@ async function loadJob() {
     }
 }
 retryJob.addEventListener('click', loadJob);
+
+// Stage 3B: Guard repeat requests and preserve the note when a submission fails.
+let applicationSubmitting = false;
+applyForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (applicationSubmitting || applyForm.hidden || !applyForm.reportValidity()) return;
+    applicationSubmitting = true;
+    applyError.hidden = true;
+    applyButton.disabled = true;
+    applyButton.textContent = 'Submitting...';
+    applyForm.setAttribute('aria-busy', 'true');
+
+    try {
+        const response = await fetch("/api/applications", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                jobId: jobId,
+                coverNote: document.getElementById("cover-note").value
+            })
+        });
+
+        // Expired sessions and wrong-role accounts use the same redirects as the list pages.
+        if (response.status === 401 || response.status === 403) {
+            window.location.href = response.status === 401 ? 'login.html' : 'Employer_Dashboard.html';
+            return;
+        }
+        const data = await response.json();
+
+        if (response.ok) {
+            applyForm.hidden = true;
+            const attached = data.application?.hasSubmittedResume;
+            const resumeNote = attached
+                ? "Submitted resume: " + (data.application.submittedResumeName || "attached resume")
+                : "No profile resume was attached. This application is still saved.";
+            showConfirmation(
+                data.message || "Application submitted successfully.",
+                data.application?.status || "Applied",
+                resumeNote
+            );
+            return;
+        }
+
+        if (response.status === 409) {
+            applyForm.hidden = true;
+            // A conflict can mean the posting was archived after this page loaded.
+            // Use the server's code so an unavailable posting is not mistaken for a duplicate.
+            showPageMessage(data.code === 'POSTING_UNAVAILABLE'
+                ? data.message
+                : 'You have already applied. Check My Applications for its current status.');
+            retryJob.hidden = false;
+            return;
+        }
+
+        showApplyError(data.message || "Could not submit application.");
+        applyButton.disabled = false;
+    } catch (error) {
+        console.error("Apply error:", error);
+        showApplyError("Could not connect to the server.");
+    } finally {
+        applicationSubmitting = false;
+        applyButton.disabled = false;
+        applyButton.textContent = 'Apply';
+        applyForm.setAttribute('aria-busy', 'false');
+    }
+});
 
 loadJob();

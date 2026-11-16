@@ -46,6 +46,8 @@
     <div>
         <h3>Jobs Posted</h3>
         <p id="total-jobs" aria-live="polite">Loading...</p>
+            <!-- Total includes every posting; these counts explain its current availability. -->
+            <p><span id="active-jobs">Loading...</span> active · <span id="archived-jobs">Loading...</span> archived</p>
     </div>
 
     <!-- Number of applications received -->
@@ -129,6 +131,12 @@
     <label for="description">Description:</label>
     <textarea id="description" name="description" rows="4" cols="50" placeholder="Type here..."required></textarea>
   </div>
+<!-- An optional deadline uses the same Toronto cutoff as the full posting page. -->
+<div>
+  <label for="application-deadline">Application deadline (optional):</label>
+  <input id="application-deadline" name="application_deadline" type="date" aria-describedby="deadline-help">
+  <p id="deadline-help">Leave blank for no deadline. Applications close at 11:59 p.m. Toronto time on the selected date.</p>
+</div>
 <!-- Submit button -->
   <button type="submit">Submit Form</button>
 </fieldset>
@@ -136,6 +144,7 @@
         </section>
    
 </main>
+        <script src="posting-deadlines.js"></script>
         <script src="Employer_Dashboard.js"></script>
     </body>
 </html>

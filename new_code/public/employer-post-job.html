@@ -36,15 +36,23 @@
                     <option>Contract</option>
                     <option>Internship</option>
                 </select>
+                <!-- Optional date: an empty value explicitly means no deadline. -->
+                <label for="application-deadline">Application deadline (optional)</label>
+                <input id="application-deadline" name="application_deadline" type="date" aria-describedby="deadline-help">
+                <p id="deadline-help">Leave blank for no deadline. Applications close at 11:59 p.m. Toronto time on the selected date.</p>
                 <label for="description">Description</label>
                 <textarea id="description" name="description" maxlength="5000" required></textarea>
-                <p id="post-message" class="save-message" hidden></p>
+                <!-- Announce save results to screen readers as well as displaying them. -->
+                <p id="post-message" class="save-message" role="status" hidden></p>
                 <button type="submit" class="apply-button">Publish job</button>
+                <!-- Cancel returns the shared form to creating a new posting. -->
+                <button id="cancel-edit" type="button" hidden>Cancel editing</button>
             </form>
             <div id="my-jobs" class="page-width job-list"></div>
         </section>
 
         <script src="applications-common.js"></script>
+        <script src="posting-deadlines.js"></script>
         <script src="employer-post-job.js"></script>
     </body>
 </html>
