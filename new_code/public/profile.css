@@ -445,3 +445,103 @@ section .profile-info{
     font-weight: 500;
     color: #111827;
 }
+
+/* Feedback button and panel */
+#jobPosting {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 8px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font: inherit;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+#jobPosting:focus {
+  outline: none;
+  border-color: #6d28d9;
+  box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.15);
+}
+
+.feedback-job-picker label {
+  display: block;
+  margin-top: 16px;
+  font-weight: 600;
+}
+
+#feedbackJobStatus {
+  margin: 0 0 12px;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+#feedbackBtn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  background: #6d28d9;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#feedbackBtn:hover:not(:disabled) {
+  background: #5b21b6;
+}
+
+#feedbackBtn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#feedbackPanel {
+  margin-top: 20px;
+}
+
+.feedback-card {
+  padding: 20px 24px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  line-height: 1.5;
+}
+
+.feedback-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  color: #4c1d95;
+}
+
+.feedback-card h4 {
+  margin: 20px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #ede9fe;
+  font-size: 1rem;
+  color: #111827;
+}
+
+.feedback-card ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.feedback-card li {
+  margin-bottom: 8px;
+}
+
+.feedback-card em {
+  color: #6b7280;
+}
+
+.feedback-error {
+  padding: 12px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+}

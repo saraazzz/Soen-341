@@ -5,7 +5,9 @@ const path = require("node:path");
 const test = require("node:test");
 const {
     snapshotProfileResume,
+    storeUploadedFile,
     resolveStoredResume,
+    resolveStoredApplicationDocument,
     unlinkPublicUpload
 } = require("../server/application-resumes");
 
@@ -30,6 +32,48 @@ test("an application stores a copy of the resume that was submitted", () => {
     assert.equal(snapshot.file, "1000-aaaa.pdf");
     assert.equal(snapshot.originalName, "resume-a.pdf");
     assert.equal(fs.readFileSync(path.join(destinationRoot, snapshot.file), "utf8"), "resume-a bytes");
+});
+
+test("an uploaded application resume is moved into private storage with its original name", () => {
+    const sourcePath = path.join(temporaryDirectory(), "upload.tmp");
+    const destinationRoot = temporaryDirectory();
+    fs.writeFileSync(sourcePath, "uploaded resume bytes");
+
+    const stored = storeUploadedFile({
+        sourcePath,
+        destinationRoot,
+        originalName: "candidate-resume.PDF",
+        now: 1500,
+        randomHex: "cccc"
+    });
+
+    assert.deepEqual(stored, {
+        file: "1500-cccc-candidate-resume.PDF",
+        originalName: "candidate-resume.PDF",
+        missing: false
+    });
+    assert.equal(fs.existsSync(sourcePath), false);
+    assert.equal(fs.readFileSync(path.join(destinationRoot, stored.file), "utf8"), "uploaded resume bytes");
+    assert.equal(resolveStoredApplicationDocument(stored.file, destinationRoot, temporaryDirectory()),
+        path.join(destinationRoot, stored.file));
+});
+
+test("legacy additional documents resolve only inside public uploads", () => {
+    const publicRoot = temporaryDirectory();
+    const uploadsRoot = path.join(publicRoot, "uploads");
+    const outsideRoot = temporaryDirectory();
+    fs.mkdirSync(uploadsRoot);
+    fs.writeFileSync(path.join(uploadsRoot, "letter.pdf"), "letter bytes");
+    fs.writeFileSync(path.join(outsideRoot, "secret.pdf"), "secret bytes");
+
+    assert.equal(
+        resolveStoredApplicationDocument("uploads/letter.pdf", temporaryDirectory(), publicRoot),
+        path.join(uploadsRoot, "letter.pdf")
+    );
+    assert.equal(
+        resolveStoredApplicationDocument("uploads/../secret.pdf", temporaryDirectory(), publicRoot),
+        null
+    );
 });
 
 test("replacing the profile resume does not change an earlier application resume", () => {

@@ -59,12 +59,68 @@ function snapshotProfileResume({
     };
 }
 
+function storeUploadedFile({
+    sourcePath,
+    destinationRoot,
+    originalName,
+    now = Date.now(),
+    randomHex
+}) {
+    const safeOriginalName = path.basename(originalName);
+    const suffix = randomHex || crypto.randomBytes(8).toString("hex");
+    const storedName = `${now}-${suffix}-${safeOriginalName.slice(-200)}`;
+    const destination = path.join(destinationRoot, storedName);
+
+    fs.mkdirSync(destinationRoot, { recursive: true });
+
+    try {
+        fs.renameSync(sourcePath, destination);
+    } catch (error) {
+        if (error.code !== "EXDEV") {
+            throw error;
+        }
+
+        fs.copyFileSync(sourcePath, destination);
+        fs.unlinkSync(sourcePath);
+    }
+
+    return {
+        file: storedName,
+        originalName: safeOriginalName,
+        missing: false
+    };
+}
+
 function resolveStoredResume(storedName, destinationRoot) {
     if (!storedName || storedName !== path.basename(storedName)) {
         return null;
     }
 
     const resolved = resolveInside(destinationRoot, storedName);
+
+    if (!resolved || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+        return null;
+    }
+
+    return resolved;
+}
+
+function resolveStoredApplicationDocument(storedName, privateRoot, publicRoot) {
+    if (!storedName || typeof storedName !== "string") {
+        return null;
+    }
+
+    if (storedName === path.basename(storedName)) {
+        return resolveStoredResume(storedName, privateRoot);
+    }
+
+    const legacyPrefix = "uploads/";
+    if (!storedName.startsWith(legacyPrefix)) {
+        return null;
+    }
+
+    const uploadsRoot = path.join(publicRoot, "uploads");
+    const resolved = resolveInside(uploadsRoot, storedName.slice(legacyPrefix.length));
 
     if (!resolved || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
         return null;
@@ -95,7 +151,9 @@ module.exports = {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
     snapshotProfileResume,
+    storeUploadedFile,
     resolveStoredResume,
+    resolveStoredApplicationDocument,
     removeStoredResume,
     unlinkPublicUpload
 };

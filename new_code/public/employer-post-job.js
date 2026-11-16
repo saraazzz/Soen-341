@@ -18,6 +18,8 @@ function beginEdit(job) {
     Object.entries(fieldIds).forEach(([field, id]) => {
         document.getElementById(id).value = job[field] || "";
     });
+    // Restore the date in Toronto, rather than displaying the next day's UTC date.
+    document.getElementById("application-deadline").value = deadlineInputValue(job.deadline_at);
     publishButton.textContent = "Save changes";
     cancelEdit.hidden = false;
     showPostMessage("Editing: " + job.title, true);
@@ -52,12 +54,17 @@ function renderMyJobs(jobs) {
     }
 
     myJobs.innerHTML = jobs.map((job) => `
-        <article class="application-card">
-            <h2>${escapeHtml(job.title)}</h2>
+        <article class="application-card employer-job-card">
+            <div class="employer-job-heading">
+                <h2>${escapeHtml(job.title)}</h2>
+                <div class="employer-job-actions">
+                    <button type="button" class="edit-posting">Edit posting <i class="bi bi-pencil-square" aria-hidden="true"></i></button>
+                    <button type="button" class="archive-posting" data-job-id="${escapeHtml(job.id)}" ${job.archived_at ? "disabled" : ""}>${job.archived_at ? "Archived" : "Archive posting"} <i class="bi bi-archive" aria-hidden="true"></i></button>
+                </div>
+            </div>
             <p class="application-meta">${escapeHtml(job.location || "Location not listed")} · ${escapeHtml(job.job_type || "Job type not listed")}</p>
-            <p class="application-meta">${escapeHtml(job.archived_at ? "Archived" : "Open")}</p>
-            <button type="button" class="edit-posting">Edit posting</button>
-            <button type="button" class="archive-posting" data-job-id="${escapeHtml(job.id)}" ${job.archived_at ? "disabled" : ""}>${job.archived_at ? "Archived" : "Archive posting"}</button>
+            <p class="application-meta">${escapeHtml(job.archived_at || job.status === "archived" ? "Archived" : "Open")}</p>
+            <p class="application-meta">${escapeHtml(deadlineLabel(job.deadline_at))}</p>
         </article>
     `).join("");
     // Bind each button to its own job object instead of putting posting data in HTML.
@@ -126,6 +133,9 @@ postForm.addEventListener("submit", async (event) => {
         showPostMessage("Please complete every field. Text cannot contain only spaces.", false);
         return;
     }
+    // Add the optional date after required-field checks, so blank remains valid.
+    // Sending blank while editing removes a previously saved deadline.
+    jobData.application_deadline = document.getElementById("application-deadline").value;
     const wasEditing = editingJobId !== null;
     saving = true;
     postMessage.hidden = true;

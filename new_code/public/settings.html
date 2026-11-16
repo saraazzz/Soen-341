@@ -10,30 +10,12 @@
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="nav-bar.css">
+    <script src="nav-bar.js" defer></script>
     <link rel="stylesheet" href="settings.css">
 </head>
 
 <body class="nav-collapsed">
-    <header class="top-header">
-        <button id="hamburger" class="hamburger"
-                aria-label="Toggle navigation"
-                aria-expanded="false"
-                aria-controls="main-nav">
-            <span></span>
-            <span></span>
-            <span></span>
-        </button>
-
-        <img class="header-logo"
-             src="images/careerconnect-logo.png"
-             alt="CareerConnect Logo">
-    </header>
-
-    <nav id="main-nav" class="navbar">
-        <ul class="nav-links" id="nav-links">
-            <!-- Navigation links are populated by settings.js -->
-        </ul>
-    </nav>
+    <div id="navbar-container"></div>
 
     <main class="settings-main">
         <div class="page-heading">

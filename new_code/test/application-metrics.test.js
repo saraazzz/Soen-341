@@ -8,6 +8,7 @@ const {
     authorizeSeeker,
     applicationInsert,
     presentEmployerApplication,
+    canDownloadEmployerAdditionalDocument,
     presentSeekerApplication,
     selectVisibleApplications,
     selectVisibleApplication,
@@ -105,13 +106,32 @@ test("employer responses do not include the private resume file name", () => {
         submitted_resume_file: "private.pdf",
         submitted_resume_original_name: "resume-a.pdf",
         has_submitted_resume: 1,
+        cover_letter_path: "1731720000000-0123456789abcdef-cover-letter.pdf",
         job_title: "Analyst"
     });
 
     assert.equal(presented.has_submitted_resume, true);
     assert.equal(presented.submitted_resume_original_name, "resume-a.pdf");
+    assert.equal(presented.has_additional_document, true);
+    assert.equal(presented.additional_document_name, "cover-letter.pdf");
     assert.equal(Object.hasOwn(presented, "submitted_resume_file"), false);
+    assert.equal(Object.hasOwn(presented, "cover_letter_path"), false);
     assert.equal(EMPLOYER_LIST_SQL.includes("AS has_submitted_resume"), true);
+});
+
+test("only the owning employer can download an application additional document", () => {
+    const row = {
+        employer_id: 9,
+        cover_letter_path: "1731720000000-0123456789abcdef-cover-letter.pdf"
+    };
+
+    assert.equal(canDownloadEmployerAdditionalDocument({ userId: 3, role: "employer" }, row).status, 404);
+    assert.equal(canDownloadEmployerAdditionalDocument({ userId: 9, role: "employer" }, row), null);
+    assert.equal(canDownloadEmployerAdditionalDocument({ userId: 9, role: "job_seeker" }, row).status, 403);
+    assert.equal(canDownloadEmployerAdditionalDocument({ userId: 9, role: "employer" }, {
+        employer_id: 9,
+        cover_letter_path: null
+    }).status, 404);
 });
 
 test("known application statuses stay unchanged", () => {

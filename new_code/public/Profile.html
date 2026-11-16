@@ -10,61 +10,11 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="nav-bar.css">
+        <script src="nav-bar.js" defer></script>
         <link rel="stylesheet" href="profile.css">
     </head>
     <body class="nav-collapsed">
-        <header class="top-header">
-            <button id="hamburger" class="hamburger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="main-nav">
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
-            <img class="header-logo" src="images/careerconnect-logo.png" alt="CareerConnect Logo">
-        </header>
-
-        <nav id="main-nav" class="navbar">
-            <ul class="nav-links">
-                <li>
-                    <a href="Profile.html" class="active">
-                        <i class="bi bi-person"></i>
-                        <span>My Profile</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="jobs.html">
-                        <i class="bi bi-briefcase"></i>
-                        <span>Jobs</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="my-applications.html">
-                        <i class="bi bi-clipboard-check"></i>
-                        <span>My Applications</span>
-                    </a>
-                </li>
-                
-                <li>
-                    <a href="Dashboard.html">
-                        <i class="bi bi-house"></i>
-                        <span>Dashboard</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="settings.html">
-                        <i class="bi bi-gear"></i>
-                        <span>Settings</span>
-                    </a>
-                </li>
-    
-                <li>
-                    <a href="#" id="logout-link">
-                        <i class="bi bi-box-arrow-right"></i>
-                        <span>Logout</span>
-                    </a>
-                </li>
-                
-            </ul>
-        </nav>
+        <div id="navbar-container"></div>
         <section>
             <span class="header">
                 <p><b>My Profile</b></p>
@@ -137,6 +87,16 @@
                         <p>
                             <i class="bi bi-geo-alt"></i>
                             <span id="profile-location">Loading...</span>
+                        </p>
+
+                        <p id="profile-address-row" hidden>
+                            <i class="bi bi-house"></i>
+                            <span id="profile-address"></span>
+                        </p>
+
+                        <p id="profile-postal-code-row" hidden>
+                            <i class="bi bi-mailbox"></i>
+                            <span id="profile-postal-code"></span>
                         </p>
 
                         <p id="profile-about">Loading...</p>
@@ -238,7 +198,7 @@
                                 <label for="resume-file" class="resume-choice-btn">
                                     <i class="bi bi-upload"></i> Upload Current Resume
                                 </label>
-                                <input type="file" id="resume-file" accept=".pdf,.doc" hidden />
+                                <input type="file" id="resume-file" accept=".pdf,.doc,.docx" hidden />
 
                                 <a href="resume-builder/resume-builder.html" class="resume-choice-btn ai-btn">
                                     <i class="bi bi-stars"></i> Create a New Resume
@@ -251,16 +211,26 @@
                                 <button type="button" class="resume-save">Save Resume</button>
                             </div>
                             <div id="resume-preview" class="resume-preview" hidden>
-                            <iframe id="resume-iframe" src=""></iframe>
-                            <div class="resume-actions" id= "resume-actions" hidden>
-                                <button type="button" id="delete-resume-btn" class="delete-resume-btn">Remove Resume</button>
+                                <iframe id="resume-iframe" src="" title="Resume preview"></iframe>
+                                <div class="resume-actions" id="resume-actions" hidden>
+                                    <button type="button" id="delete-resume-btn" class="delete-resume-btn">Remove Resume</button>
+                                </div>
                             </div>
+                        <div class="feedback-job-picker">
+                            <label for="jobPosting">Choose a job you applied to for resume feedback</label>
+                            <select id="jobPosting" aria-describedby="feedbackJobStatus" required>
+                                <option value="">Loading job postings...</option>
+                            </select>
+                            <p id="feedbackJobStatus" role="status">Loading job postings...</p>
                         </div>
+                        <button type="button" id="feedbackBtn" disabled>Get AI Feedback</button>
+                        <div id="feedbackPanel" aria-live="polite"></div>
                 </div>
             </div>
         </div>
     </section>
     <script src="profile.js"></script>
     <script src="notifications.js"></script>
+    <script src="feedback-ui.js"></script>
     </body>
 </html>

@@ -5,6 +5,24 @@ const mysql = require("mysql2");
 const app = require("../server/server");
 const db = mysql.createConnection.mock.results[0].value;
 const posting = { title: " Developer ", company: "Demo", location: "Montreal", category: "IT", job_type: "Full-time", description: "Build things" };
+const validApplication = {
+    jobId: 7,
+    firstName: "Alex",
+    lastName: "Applicant",
+    email: "alex@example.com",
+    phone: "",
+    address: "",
+    postalCode: "",
+    linkedinUrl: "",
+    portfolioUrl: "",
+    workAuthorization: "",
+    availabilityDate: "",
+    salaryMin: "",
+    salaryMax: "",
+    relevantExperience: "",
+    coverNote: "",
+    resumeChoice: "profile"
+};
 let password;
 beforeAll(async () => { password = await bcrypt.hash("test-password", 4); });
 beforeEach(() => db.query.mockReset());
@@ -52,7 +70,7 @@ test("archive database failures are reported", async () => {
 });
 test("seeker search excludes archived postings", async () => {
     db.query.mockImplementationOnce((sql, params, cb) => {
-        expect(sql).toContain("WHERE jobs.archived_at IS NULL AND (");
+        expect(sql).toContain("WHERE jobs.archived_at IS NULL");
         cb(null, []);
     });
     expect((await request(app).get("/api/jobs?q=developer")).status).toBe(200);
@@ -69,7 +87,7 @@ test("employers can still list archived jobs", async () => {
 test("new applications to archived jobs are rejected before copying a resume", async () => {
     const agent = await login("job_seeker"); db.query.mockClear();
     db.query.mockImplementationOnce((sql, params, cb) => cb(null, [{ id: 7, archived_at: "2026-11-12" }]));
-    expect((await agent.post("/api/applications").send({ jobId: 7 })).status).toBe(409);
+    expect((await agent.post("/api/applications").send(validApplication)).status).toBe(409);
     expect(db.query).toHaveBeenCalledTimes(1);
 });
 
@@ -80,10 +98,10 @@ test("an archive during application submission cannot produce a successful appli
     db.query.mockImplementationOnce((sql, params, cb) => cb(null, [{ resume_path: null }]));
     db.query.mockImplementationOnce((sql, params, cb) => {
         expect(sql).toContain("WHERE id = ? AND archived_at IS NULL");
-        expect(params[5]).toBe(7);
+        expect(params.at(-1)).toBe(7);
         cb(null, { affectedRows: 0 });
     });
-    const response = await agent.post("/api/applications").send({ jobId: 7 });
+    const response = await agent.post("/api/applications").send(validApplication);
     expect(response.status).toBe(409);
     expect(response.body.code).toBe("POSTING_UNAVAILABLE");
     expect(response.body.application).toBeUndefined();
@@ -93,7 +111,27 @@ test("an active posting can still accept an application through the guarded inse
     db.query.mockImplementationOnce((sql, params, cb) => cb(null, [{ id: 7, archived_at: null }]));
     db.query.mockImplementationOnce((sql, params, cb) => cb(null, [{ resume_path: null }]));
     db.query.mockImplementationOnce((sql, params, cb) => cb(null, { affectedRows: 1, insertId: 101 }));
-    const response = await agent.post("/api/applications").send({ jobId: 7 });
+    const response = await agent.post("/api/applications").send(validApplication);
     expect(response.status).toBe(201);
     expect(response.body.application.id).toBe(101);
+});
+
+test("expired deadline blocks applications even before archiving", async () => {
+    const agent = await login("job_seeker"); db.query.mockClear();
+    db.query.mockImplementationOnce((sql, params, cb) => cb(null, [{ id: 7, archived_at: null, deadline_passed: 1 }]));
+    const response = await agent.post("/api/applications").send(validApplication);
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("POSTING_UNAVAILABLE");
+    expect(db.query).toHaveBeenCalledTimes(1);
+});
+
+test("application details are validated before querying job availability", async () => {
+    const agent = await login("job_seeker");
+    db.query.mockClear();
+
+    const response = await agent.post("/api/applications").send({ jobId: 7 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/firstName/);
+    expect(db.query).not.toHaveBeenCalled();
 });

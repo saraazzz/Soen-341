@@ -11,79 +11,13 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="nav-bar.css">
+        <script src="nav-bar.js" defer></script>
         <link rel="stylesheet" href="profile.css">
         <!-- Stage 1: Load dashboard-only styling after the existing shared styles. -->
         <link rel="stylesheet" href="Employer_Dashboard.css">
     </head>
     <body class="nav-collapsed recruiter-dashboard">
-        <header class="top-header">
-            <button id="hamburger" class="hamburger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="main-nav">
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
-            
-<!-- Display the CareerConnect logo from the images folder. -->
-<img class="header-logo"
-     src="images/careerconnect-logo.png"
-     alt="CareerConnect Logo">
-
-        </header>
-
-        <nav id="main-nav" class="navbar">
-            <ul class="nav-links">
-                <li>
-                    <a href="Employer_Profile.html" >
-                        <i class="bi bi-person"></i>
-                        <span>My Profile</span>
-                    </a>
-                </li>
-               <!--for recruiter dashboard, we need to add the dashboard and settings links back in. -->
-                <li>
-                    <a href="Employer_Dashboard.html" class="active">
-                        <i class="bi bi-house"></i>
-                        <span>Dashboard</span>
-                    </a>
-                </li>
-
-<!-- Link to the existing job posting page. -->
-<li>
-    <a href="employer-post-job.html">
-        <!-- Icon representing creating a new posting. -->
-        <i class="bi bi-plus-circle"></i>
-
-        <!-- Navigation label. -->
-        <span>Post a Job</span>
-    </a>
-</li>
-
-<!-- Link to the existing applicant management page. -->
-<li>
-    <a href="employer-applicants.html">
-        <!-- Icon representing applicants. -->
-        <i class="bi bi-people"></i>
-
-        <!-- Navigation label. -->
-        <span>Applicants</span>
-    </a>
-</li>
-
-                <li>
-                    <a href="#" >
-                        <i class="bi bi-gear"></i>
-                        <span>Settings</span>
-                    </a>
-                </li>
-    
-                <li>
-                    <a href="#" id="logout-link">
-                        <i class="bi bi-box-arrow-right"></i>
-                        <span>Logout</span>
-                    </a>
-                </li>
-                
-            </ul>
-        </nav>
+        <div id="navbar-container"></div>
 
 <!-- Stage 1: Status areas and retry controls let users recover from failed requests. -->
 <main class="dashboard-main">
@@ -197,6 +131,12 @@
     <label for="description">Description:</label>
     <textarea id="description" name="description" rows="4" cols="50" placeholder="Type here..."required></textarea>
   </div>
+<!-- An optional deadline uses the same Toronto cutoff as the full posting page. -->
+<div>
+  <label for="application-deadline">Application deadline (optional):</label>
+  <input id="application-deadline" name="application_deadline" type="date" aria-describedby="deadline-help">
+  <p id="deadline-help">Leave blank for no deadline. Applications close at 11:59 p.m. Toronto time on the selected date.</p>
+</div>
 <!-- Submit button -->
   <button type="submit">Submit Form</button>
 </fieldset>
@@ -204,6 +144,7 @@
         </section>
    
 </main>
+        <script src="posting-deadlines.js"></script>
         <script src="Employer_Dashboard.js"></script>
         <script src="notifications.js"></script>
     </body>

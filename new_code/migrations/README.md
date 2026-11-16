@@ -1,6 +1,10 @@
 # Database migrations
 
 `database.sql` is the starting schema. The migration
+`001_add_applications_and_resume_path.sql` updates older local databases with
+the applications table, profile address fields, resume attachments, and
+application details, including an optional additional application document.
+It also adds missing fields if an earlier version of the migration was already applied.
 `001_add_applications_and_resume_path.sql` updates older local databases
 that are missing the applications table or the resume_path column.
 `002_link_submitted_application_resumes.sql` adds nullable columns that
@@ -39,6 +43,8 @@ SOURCE new_code/migrations/001_add_applications_and_resume_path.sql;
 SOURCE new_code/migrations/002_link_submitted_application_resumes.sql;
 ```
 
+Run the migration on each database that needs these schema changes. Keep a private
+checklist of successfully applied filenames;
 Run each pending file once, in order, on each database. `001` adds the applications table and
 profile `resume_path` column. `002` adds the submitted-resume columns. Keep a private checklist of successfully applied filenames;
 there is no automatic migration runner or history table in this setup.
@@ -73,3 +79,20 @@ SOURCE new_code/migrations/004_create_notifications.sql;
 ```
 
 It creates the `notifications` table (storing user-specific notifications for new applications, status updates, interview invitations, and deadline reminders) and safely adds an optional `deadline` column to `jobs`. Existing tables and data are fully preserved.
+## Optional deadlines (004)
+
+`004_optional_posting_deadlines.sql` adds nullable `jobs.deadline_at` and its index.
+Apply once after 003, before starting the deadline-enabled server. Existing rows
+get NULL (no deadline). This migration has not been applied by the authoring step.
+
+The API accepts `application_deadline` as YYYY-MM-DD, blank, or null. Dates close
+at the start of the next day in America/Toronto, converted to a UTC instant.
+Create defaults to no deadline; edit omission preserves the deadline and explicit
+blank/null removes it. Expired jobs reject applications and are excluded from search
+even before an archive worker runs. API deadline_at values are ISO UTC strings.
+Notification code can use that timestamp without guessing the timezone.
+
+The running server archives expired postings at startup and every 60 seconds.
+Search and application inserts enforce the UTC deadline immediately, independently
+of the worker. Archived postings are not reopened by changing or removing a deadline.
+The worker retains original archive dates and all existing applications.
