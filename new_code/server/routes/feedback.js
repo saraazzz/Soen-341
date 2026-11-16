@@ -14,6 +14,49 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 const MAX_RESUME_TEXT_CHARS = 100_000;
 
+const FEEDBACK_SCHEMA = {
+  type: 'object',
+  properties: {
+    overallScore: { type: 'integer', minimum: 0, maximum: 100 },
+    matchScore: {
+      anyOf: [
+        { type: 'integer', minimum: 0, maximum: 100 },
+        { type: 'null' }
+      ]
+    },
+    summary: { type: 'string' },
+    strengths: { type: 'array', items: { type: 'string' } },
+    gapsVsPosting: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          requirement: { type: 'string' },
+          status: { type: 'string', enum: ['met', 'partial', 'missing'] },
+          evidence: { type: 'string' }
+        },
+        required: ['requirement', 'status', 'evidence'],
+        additionalProperties: false
+      }
+    },
+    suggestedEdits: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          section: { type: 'string' },
+          suggestion: { type: 'string' }
+        },
+        required: ['section', 'suggestion'],
+        additionalProperties: false
+      }
+    },
+    atsTips: { type: 'array', items: { type: 'string' } }
+  },
+  required: ['overallScore', 'matchScore', 'summary', 'strengths', 'gapsVsPosting', 'suggestedEdits', 'atsTips'],
+  additionalProperties: false
+};
+
 const SYSTEM_PROMPT = `You are a resume reviewer. Use ONLY the resume text or attached resume PDF and the job posting text provided.
 Never invent experience, skills, employers, or numbers. If something is missing from the resume, say it is missing.
 If no job posting is given, set "matchScore" to null and "gapsVsPosting" to [].
@@ -27,6 +70,35 @@ Return ONLY valid JSON with this exact shape:
   "suggestedEdits": [{ "section": "string", "suggestion": "concrete rewrite or addition, using only real resume facts" }],
   "atsTips": ["..."]
 }`;
+
+router.get('/jobs', (req, res) => {
+  if (!req.session || !req.session.userId) {
+    return res.status(401).json({ message: 'Please log in first.' });
+  }
+  if (req.session.role !== 'job_seeker') {
+    return res.status(403).json({ message: 'Only job seekers can view their applied jobs.' });
+  }
+
+  const db = req.app.get('db');
+  if (!db) return res.status(500).json({ message: 'Database not available.' });
+
+  const sql = `
+    SELECT jobs.id, jobs.title, jobs.location, jobs.category, jobs.job_type,
+      jobs.description, jobs.company AS company_name
+    FROM applications
+    INNER JOIN jobs ON jobs.id = applications.job_id
+    WHERE applications.job_seeker_id = ?
+    ORDER BY applications.applied_at DESC, jobs.created_at DESC
+  `;
+
+  db.query(sql, [req.session.userId], (error, jobs) => {
+    if (error) {
+      console.error('Applied job list error:', error);
+      return res.status(500).json({ message: 'Could not load your applied jobs.' });
+    }
+    res.json(jobs);
+  });
+});
 
 router.post('/', (req, res) => {
   if (!req.session || !req.session.userId) {
@@ -102,7 +174,12 @@ router.post('/', (req, res) => {
               role: 'user',
               parts: [...resumeParts, { text: userText }]
             }],
-            generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 3000, temperature: 0.3 }
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseJsonSchema: FEEDBACK_SCHEMA,
+              maxOutputTokens: 6000,
+              temperature: 0.3
+            }
           })
         });
 
@@ -119,13 +196,44 @@ router.post('/', (req, res) => {
         }
 
         const data = await r.json();
-        const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
-        const clean = text.replace(/```json|```/g, '').trim();
+        const candidate = data.candidates?.[0];
+        const text = (candidate?.content?.parts || []).map(p => p.text || '').join('').trim();
+        if (candidate?.finishReason === 'MAX_TOKENS') {
+          console.error('Gemini feedback was truncated at the output token limit.');
+          return res.status(502).json({ error: 'The AI response was cut off. Try again or use a shorter resume.' });
+        }
+        if (!text) {
+          const reason = candidate?.finishReason || data.promptFeedback?.blockReason || 'NO_CONTENT';
+          console.error('Gemini returned no feedback text:', reason);
+          const error = reason === 'MAX_TOKENS'
+            ? 'The AI response was cut short. Try again with a shorter resume.'
+            : 'The AI could not read this resume and return feedback. Try a text-based PDF or Word document.';
+          return res.status(502).json({ error });
+        }
+
+        const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
         let feedback;
         try {
           feedback = JSON.parse(clean);
-        } catch {
+        } catch (parseError) {
+          // Recover if the model wrapped a valid JSON object in brief extra text.
+          const objectStart = clean.indexOf('{');
+          const objectEnd = clean.lastIndexOf('}');
+          if (objectStart >= 0 && objectEnd > objectStart) {
+            try {
+              feedback = JSON.parse(clean.slice(objectStart, objectEnd + 1));
+            } catch {
+              console.error('Gemini feedback JSON parsing failed:', parseError.message, candidate?.finishReason);
+              return res.status(502).json({ error: 'The AI response was incomplete. Please try again.' });
+            }
+          } else {
+            console.error('Gemini feedback did not contain a JSON object:', parseError.message, candidate?.finishReason);
+            return res.status(502).json({ error: 'The AI response was incomplete. Please try again.' });
+          }
+        }
+
+        if (!feedback || typeof feedback !== 'object' || Array.isArray(feedback)) {
           return res.status(502).json({ error: 'AI returned an unreadable response. Try again.' });
         }
         res.json(feedback);

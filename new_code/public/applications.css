@@ -29,6 +29,87 @@
     font-size: 1.2rem;
 }
 
+.employer-job-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.employer-job-heading h2 {
+    min-width: 0;
+}
+
+.employer-job-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.employer-job-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 32px;
+    padding: 6px 8px;
+    border: 1px solid #7222ac;
+    border-radius: 8px;
+    background: #7222ac;
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.employer-job-actions .edit-posting:hover {
+    border-color: #5b1b8a;
+    background: #5b1b8a;
+}
+
+.employer-job-actions .archive-posting {
+    border-color: #c2410c;
+    background: #fff;
+    color: #c2410c;
+}
+
+.employer-job-actions .archive-posting:hover:not(:disabled) {
+    background: #fff7ed;
+}
+
+.employer-job-actions button:focus-visible {
+    outline: 3px solid rgba(114, 34, 172, 0.3);
+    outline-offset: 2px;
+}
+
+.employer-job-actions button:disabled {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+    color: #64748b;
+    cursor: not-allowed;
+}
+
+.employer-job-actions i {
+    font-size: 13px;
+}
+
+@media (max-width: 640px) {
+    .employer-job-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .employer-job-actions {
+        justify-content: flex-start;
+    }
+}
+
 .job-meta,
 .application-meta {
     margin: 0 0 6px;

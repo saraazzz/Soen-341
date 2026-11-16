@@ -1,6 +1,6 @@
 // feedback-ui.js (vanilla JS)
 // The server reads the logged-in user's saved profile resume (PDF, DOC, or DOCX). This page
-// loads available postings from /api/jobs and sends the selected posting text.
+// loads the seeker's applied postings and sends the selected posting text.
 
 function esc(s) {
   const d = document.createElement('div');
@@ -16,8 +16,8 @@ let availableJobs = [];
 
 async function loadFeedbackJobs() {
   try {
-    const response = await fetch('/api/jobs');
-    const jobs = await response.json().catch(() => []);
+    const response = await fetch('/api/feedback/jobs');
+    const jobs = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(jobs.message || 'Could not load job postings.');
 
     availableJobs = Array.isArray(jobs) ? jobs : [];
@@ -28,12 +28,12 @@ async function loadFeedbackJobs() {
       }).join('');
 
     if (availableJobs.length === 0) {
-      jobSelect.innerHTML = '<option value="">No job postings available</option>';
-      jobStatus.textContent = 'No job postings are available yet.';
+      jobSelect.innerHTML = '<option value="">No applications found</option>';
+      jobStatus.textContent = 'Apply to a job first to get resume feedback for it.';
       return;
     }
 
-    jobStatus.textContent = `${availableJobs.length} job posting${availableJobs.length === 1 ? '' : 's'} available.`;
+    jobStatus.textContent = `${availableJobs.length} job${availableJobs.length === 1 ? '' : 's'} you applied to.`;
     feedbackButton.disabled = false;
   } catch (error) {
     jobSelect.innerHTML = '<option value="">Could not load job postings</option>';
