@@ -70,6 +70,15 @@ Archived postings remain in the employer list and existing application views. Se
 search excludes them, and the application endpoint rejects new submissions. Direct
 job details report `status: archived` so a saved link can explain availability.
 
+## Notification and Reminder System (004)
+
+Apply `004_create_notifications.sql` to support the notification bell and reminder features:
+
+```sql
+SOURCE new_code/migrations/004_create_notifications.sql;
+```
+
+It creates the `notifications` table (storing user-specific notifications for new applications, status updates, interview invitations, and deadline reminders) and safely adds an optional `deadline` column to `jobs`. Existing tables and data are fully preserved.
 ## Optional deadlines (004)
 
 `004_optional_posting_deadlines.sql` adds nullable `jobs.deadline_at` and its index.
