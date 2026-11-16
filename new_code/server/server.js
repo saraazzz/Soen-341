@@ -2,7 +2,6 @@ require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2");
 
-const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
@@ -12,6 +11,7 @@ const session = require("express-session");
 const multer = require("multer");
 const mammoth = require("mammoth");
 const WordExtractor = require("word-extractor");
+const APPLICATION_UPLOAD_DIR = path.join(__dirname, "private", "application-resumes");
 const storage = multer.diskStorage({
     destination: "public/uploads/",
     filename: (req, file, cb) => {
@@ -30,8 +30,21 @@ const resumeStorage = multer.diskStorage({
     }
 });
 const resumeUpload = multer({ storage: resumeStorage });
+const applicationUploadStorage = multer.diskStorage({
+    destination: (req, file, callback) => {
+        fs.mkdir(APPLICATION_UPLOAD_DIR, { recursive: true }, (error) => {
+            callback(error, APPLICATION_UPLOAD_DIR);
+        });
+    },
+    filename: (req, file, callback) => {
+        const originalName = path.basename(file.originalname);
+        const extension = path.extname(originalName);
+        const baseName = path.basename(originalName, extension).replace(/[^a-zA-Z0-9_-]/g, "_");
+        callback(null, `${Date.now()}-${baseName || file.fieldname}${extension}`);
+    }
+});
 const applicationUpload = multer({
-    storage: resumeStorage,
+    storage: applicationUploadStorage,
     limits: { fileSize: 10 * 1024 * 1024 }
 }).fields([
     { name: "resume", maxCount: 1 },
@@ -55,7 +68,9 @@ const {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
     snapshotProfileResume,
+    storeUploadedFile,
     resolveStoredResume,
+    resolveStoredApplicationDocument,
     removeStoredResume,
     unlinkPublicUpload
 } = require("./application-resumes");
@@ -65,14 +80,15 @@ const {
     selectVisibleApplications,
     selectVisibleApplication,
     canDownloadSubmittedResume,
+    canDownloadEmployerAdditionalDocument,
     summarizeApplications,
-    applicationInsert,
     presentEmployerApplication,
     SEEKER_LIST_SQL,
     SEEKER_DETAIL_SQL,
     SEEKER_RESUME_SQL,
     EMPLOYER_LIST_SQL,
-    EMPLOYER_RESUME_SQL
+    EMPLOYER_RESUME_SQL,
+    EMPLOYER_ADDITIONAL_DOCUMENT_SQL
 } = require("./application-metrics");
 const { parseDeadline } = require("./posting-deadlines");
 const { startDeadlineArchiver } = require("./deadline-archiver");
@@ -1367,6 +1383,7 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
     const uploadedResume = req.files?.resume?.[0];
     const uploadedCoverLetter = req.files?.coverLetter?.[0];
     let unattachedFiles = [uploadedResume?.path, uploadedCoverLetter?.path].filter(Boolean);
+    let unattachedPrivateFiles = [];
     const discardUnattachedFiles = () => {
         unattachedFiles.forEach((filePath) => {
             fs.unlink(filePath, (error) => {
@@ -1374,6 +1391,14 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
             });
         });
         unattachedFiles = [];
+        unattachedPrivateFiles.forEach((fileName) => {
+            try {
+                removeStoredResume(fileName, APPLICATION_RESUME_DIR);
+            } catch (error) {
+                console.error("Could not remove unused private application document:", error);
+            }
+        });
+        unattachedPrivateFiles = [];
     };
 
     if (!req.session.userId) {
@@ -1546,16 +1571,26 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
             });
         }
 
-        const createApplication = (resumePath, coverLetterPath) => {
+        const createApplication = (snapshot, coverLetterPath) => {
+            if (snapshot.file && !unattachedPrivateFiles.includes(snapshot.file)) {
+                unattachedPrivateFiles.push(snapshot.file);
+            }
+            if (coverLetterPath && !unattachedPrivateFiles.includes(coverLetterPath)) {
+                unattachedPrivateFiles.push(coverLetterPath);
+            }
+
             const insertSql = `
                 INSERT INTO applications (
-                    job_id, job_seeker_id, cover_note, resume_path, cover_letter_path,
-                    first_name, last_name,
-                    email, phone, address, postal_code, linkedin_url, portfolio_url,
-                    work_authorization, availability_date, salary_min, salary_max,
-                    salary_currency, relevant_experience
+                    job_id, job_seeker_id, cover_note, cover_letter_path,
+                    first_name, last_name, email, phone, address, postal_code,
+                    linkedin_url, portfolio_url, work_authorization, availability_date,
+                    salary_min, salary_max, salary_currency, relevant_experience,
+                    submitted_resume_file, submitted_resume_original_name
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CAD', ?)
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CAD', ?, ?, ?
+                FROM jobs
+                WHERE id = ? AND archived_at IS NULL
+                    AND (deadline_at IS NULL OR deadline_at > UTC_TIMESTAMP())
             `;
 
             db.query(
@@ -1564,7 +1599,6 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                     jobId,
                     req.session.userId,
                     coverNote || null,
-                    resumePath,
                     coverLetterPath,
                     applicationFields.firstName,
                     applicationFields.lastName,
@@ -1578,7 +1612,10 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                     applicationFields.availabilityDate || null,
                     hasSalaryMin ? Number(applicationFields.salaryMin) : null,
                     hasSalaryMax ? Number(applicationFields.salaryMax) : null,
-                    applicationFields.relevantExperience || null
+                    applicationFields.relevantExperience || null,
+                    snapshot.file,
+                    snapshot.originalName,
+                    jobId
                 ],
                 (insertError, result) => {
                     if (insertError) {
@@ -1595,7 +1632,16 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                         });
                     }
 
+                    if (!result.affectedRows) {
+                        discardUnattachedFiles();
+                        return res.status(409).json({
+                            code: "POSTING_UNAVAILABLE",
+                            message: "This posting is no longer available for applications."
+                        });
+                    }
+
                     unattachedFiles = [];
+                    unattachedPrivateFiles = [];
                     res.status(201).json({
                         message: "Application submitted successfully.",
                         application: {
@@ -1603,22 +1649,60 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                             jobId: jobId,
                             status: "Applied",
                             coverNote: coverNote || null,
-                            resumePath
+                            hasSubmittedResume: Boolean(snapshot.file),
+                            submittedResumeName: snapshot.originalName
                         }
                     });
                 }
             );
         };
 
-        const coverLetterPath = uploadedCoverLetter
-            ? `uploads/${uploadedCoverLetter.filename}`
-            : null;
-        if (resumeChoice === "upload") {
-            return createApplication(`uploads/${uploadedResume.filename}`, coverLetterPath);
-        }
-        // Existing applications remain readable; only new submissions are blocked.
         if (jobs[0].archived_at || jobs[0].deadline_passed) {
-            return res.status(409).json({ code: "POSTING_UNAVAILABLE", message: "This posting is archived or its deadline has passed and no longer accepts applications." });
+            discardUnattachedFiles();
+            return res.status(409).json({
+                code: "POSTING_UNAVAILABLE",
+                message: "This posting is archived or its deadline has passed and no longer accepts applications."
+            });
+        }
+
+        let coverLetterPath = null;
+        if (uploadedCoverLetter) {
+            try {
+                const storedCoverLetter = storeUploadedFile({
+                    sourcePath: uploadedCoverLetter.path,
+                    destinationRoot: APPLICATION_RESUME_DIR,
+                    originalName: uploadedCoverLetter.originalname
+                });
+                coverLetterPath = storedCoverLetter.file;
+                unattachedPrivateFiles.push(coverLetterPath);
+                unattachedFiles = unattachedFiles.filter((filePath) => filePath !== uploadedCoverLetter.path);
+            } catch (storageError) {
+                console.error("Additional document storage error:", storageError);
+                discardUnattachedFiles();
+                return res.status(500).json({
+                    message: "Could not attach the additional document."
+                });
+            }
+        }
+
+        if (resumeChoice === "upload") {
+            let snapshot;
+            try {
+                snapshot = storeUploadedFile({
+                    sourcePath: uploadedResume.path,
+                    destinationRoot: APPLICATION_RESUME_DIR,
+                    originalName: uploadedResume.originalname
+                });
+            } catch (snapshotError) {
+                console.error("Uploaded resume storage error:", snapshotError);
+                discardUnattachedFiles();
+                return res.status(500).json({
+                    message: "Could not attach your resume."
+                });
+            }
+            unattachedPrivateFiles.push(snapshot.file);
+            unattachedFiles = unattachedFiles.filter((filePath) => filePath !== uploadedResume.path);
+            return createApplication(snapshot, coverLetterPath);
         }
 
         db.query(
@@ -1644,120 +1728,22 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                     });
                 } catch (snapshotError) {
                     console.error("Resume snapshot error:", snapshotError);
-
-        db.query(
-            "SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?",
-            [req.session.userId],
-            (profileError, profiles) => {
-                if (profileError) {
-                    console.error("Profile resume lookup error:", profileError);
                     discardUnattachedFiles();
                     return res.status(500).json({
-                        message: "Could not load your profile resume."
+                        message: "Could not submit application."
                     });
                 }
 
-                const resumePath = profiles[0]?.resume_path;
-                if (!resumePath) {
-                    discardUnattachedFiles();
-                    return res.status(400).json({
-                        message: "Your profile does not have a resume. Upload one or choose a file."
-                    });
-                }
-
-                const uploadsDirectory = path.resolve("public/uploads");
-                const profileResumeFile = path.resolve("public", resumePath);
-                if (!profileResumeFile.startsWith(`${uploadsDirectory}${path.sep}`)
-                    || !fs.existsSync(profileResumeFile)) {
+                if (snapshot.missing) {
                     discardUnattachedFiles();
                     return res.status(400).json({
                         message: "Your profile resume could not be found. Upload it again or choose a file."
                     });
                 }
 
-                const originalName = path.basename(resumePath).replace(/^\d+-/, "");
-                const applicationResumeName = `${crypto.randomUUID()}-${originalName}`;
-                const applicationResumeFile = path.join(uploadsDirectory, applicationResumeName);
-                fs.copyFile(profileResumeFile, applicationResumeFile, (copyError) => {
-                    if (copyError) {
-                        console.error("Could not copy profile resume for application:", copyError);
-                        discardUnattachedFiles();
-                        fs.unlink(applicationResumeFile, (cleanupError) => {
-                            if (cleanupError && cleanupError.code !== "ENOENT") {
-                                console.error("Could not remove incomplete application resume:", cleanupError);
-                            }
-                        });
-                        return res.status(500).json({
-                            message: "Could not attach your profile resume."
-                        });
-                    }
-
-                    unattachedFiles.push(applicationResumeFile);
-                    createApplication(`uploads/${applicationResumeName}`, coverLetterPath);
-                const insert = applicationInsert(
-                    jobId,
-                    req.session.userId,
-                    coverNote,
-                    snapshot
-                );
-
-                db.query(insert.sql, insert.params, (insertError, result) => {
-
-                    if (insertError) {
-                        if (snapshot.file) {
-                            try {
-                                removeStoredResume(snapshot.file, APPLICATION_RESUME_DIR);
-                            } catch (cleanupError) {
-                                console.error("Resume snapshot cleanup error:", cleanupError);
-                            }
-                        }
-
-                        if (insertError.code === "ER_DUP_ENTRY") {
-                            return res.status(409).json({
-                                message: "You have already applied to this job."
-                            });
-                        }
-
-                        console.error("Application insert error:", insertError);
-
-                        return res.status(500).json({
-                            message: "Could not submit application."
-                        });
-                    }
-
-                    // An archive may happen while the resume is being copied. A guarded
-                    // insert then writes zero rows; remove its unused private resume copy.
-                    if (!result.affectedRows) {
-                        if (snapshot.file) {
-                            try {
-                                removeStoredResume(snapshot.file, APPLICATION_RESUME_DIR);
-                            } catch (cleanupError) {
-                                console.error("Unused resume cleanup error:", cleanupError);
-                            }
-                        }
-                        return res.status(409).json({
-                            code: "POSTING_UNAVAILABLE",
-                            message: "This posting is no longer available for applications."
-                        });
-                    }
-
-                    res.status(201).json({
-                        message: "Application submitted successfully.",
-                        application: {
-                            id: result.insertId,
-                            jobId: jobId,
-                            status: "Applied",
-                            coverNote: coverNote || null,
-                            hasSubmittedResume: Boolean(snapshot.file),
-                            submittedResumeName: snapshot.originalName
-                        }
-                    });
-                });
+                return createApplication(snapshot, coverLetterPath);
             }
         );
-    });
-};
-    });
     });
 });
 
@@ -1983,6 +1969,61 @@ app.get("/api/employer/applications/:id/resume", (req, res) => {
         EMPLOYER_RESUME_SQL,
         [applicationId, req.session.userId],
         "employer"
+    );
+});
+
+app.get("/api/employer/applications/:id/additional-document", (req, res) => {
+    const denied = authorizeEmployer(req.session);
+
+    if (denied) {
+        return res.status(denied.status).json({
+            message: denied.message
+        });
+    }
+
+    const applicationId = Number(req.params.id);
+    if (!Number.isInteger(applicationId) || applicationId <= 0) {
+        return res.status(400).json({
+            message: "A valid application is required."
+        });
+    }
+
+    db.query(
+        EMPLOYER_ADDITIONAL_DOCUMENT_SQL,
+        [applicationId, req.session.userId],
+        (error, results) => {
+            if (error) {
+                console.error("Additional application document lookup error:", error);
+                return res.status(500).json({
+                    message: "Could not open that additional document."
+                });
+            }
+
+            const row = results[0] || null;
+            const accessError = canDownloadEmployerAdditionalDocument(req.session, row);
+            if (accessError) {
+                return res.status(accessError.status).json({
+                    message: accessError.message
+                });
+            }
+
+            const filePath = resolveStoredApplicationDocument(
+                row.cover_letter_path,
+                APPLICATION_RESUME_DIR,
+                PUBLIC_DIR
+            );
+            if (!filePath) {
+                return res.status(404).json({
+                    message: "The additional document is no longer available."
+                });
+            }
+
+            const fileName = path.basename(row.cover_letter_path)
+                .replace(/^\d+-[0-9a-f]{16}-/i, "")
+                .replace(/^\d+-/, "") || "additional-document";
+            res.set("Cache-Control", "private, no-store");
+            res.download(filePath, fileName);
+        }
     );
 });
 

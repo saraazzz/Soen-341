@@ -10,7 +10,7 @@ const path = require('path');
 const router = express.Router();
 const WordExtractor = require('word-extractor');
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 const MAX_RESUME_TEXT_CHARS = 100_000;
 
@@ -108,6 +108,10 @@ router.post('/', (req, res) => {
 
         if (r.status === 429) {
           return res.status(429).json({ error: 'Free-tier rate limit reached. Wait a minute and try again.' });
+        }
+        if (r.status === 503) {
+          console.error('Gemini API temporarily unavailable:', r.status, await r.text());
+          return res.status(503).json({ error: 'Gemini is temporarily experiencing high demand. Please wait a moment and try again.' });
         }
         if (!r.ok) {
           console.error('Gemini API error:', r.status, await r.text());

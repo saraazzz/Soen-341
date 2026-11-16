@@ -68,6 +68,18 @@ test("recruiter can view applications received", async () => {
                 email: "candidate@example.com",
                 first_name: "Alex",
                 last_name: "Smith",
+                phone: "555-0100",
+                address: "123 Main Street",
+                postal_code: "H2X 1Y4",
+                linkedin_url: "https://linkedin.com/in/alex",
+                portfolio_url: "https://alex.example.com",
+                work_authorization: "authorized_no_sponsorship",
+                availability_date: "2026-12-01",
+                salary_min: 70000,
+                salary_max: 90000,
+                salary_currency: "CAD",
+                relevant_experience: "Built and maintained web applications.",
+                cover_letter_path: "1731720000000-0123456789abcdef-cover-letter.pdf",
                 has_submitted_resume: 0
             }
         ]);
@@ -77,7 +89,40 @@ test("recruiter can view applications received", async () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toHaveLength(1);
-    expect(response.body[0].job_title).toBe("Developer");
+    expect(response.body[0]).toMatchObject({
+        job_title: "Developer",
+        phone: "555-0100",
+        address: "123 Main Street",
+        postal_code: "H2X 1Y4",
+        linkedin_url: "https://linkedin.com/in/alex",
+        portfolio_url: "https://alex.example.com",
+        work_authorization: "authorized_no_sponsorship",
+        availability_date: "2026-12-01",
+        salary_min: 70000,
+        salary_max: 90000,
+        salary_currency: "CAD",
+        relevant_experience: "Built and maintained web applications.",
+        has_additional_document: true,
+        additional_document_name: "cover-letter.pdf"
+    });
+});
+
+test("recruiter can open an additional document for their application", async () => {
+    const agent = await login();
+    db.query.mockImplementationOnce((sql, params, callback) => {
+        expect(params).toEqual([1, 42]);
+        expect(sql).toContain("applications.cover_letter_path");
+        callback(null, [{
+            id: 1,
+            employer_id: 42,
+            cover_letter_path: "uploads/missing-letter.pdf"
+        }]);
+    });
+
+    const response = await agent.get("/api/employer/applications/1/additional-document");
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toMatch(/no longer available/i);
 });
 
 test("recruiter can update an applicant's status", async () => {

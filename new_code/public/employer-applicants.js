@@ -68,8 +68,8 @@ function renderApplicants() {
             const resumeUrl = applicant.resume_path
                 ? `/${String(applicant.resume_path).split("/").map(encodeURIComponent).join("/")}`
                 : "";
-            const coverLetterUrl = applicant.cover_letter_path
-                ? `/${String(applicant.cover_letter_path).split("/").map(encodeURIComponent).join("/")}`
+            const additionalDocumentUrl = applicant.has_additional_document
+                ? `/api/employer/applications/${encodeURIComponent(applicant.id)}/additional-document`
                 : "";
             const linkedinUrl = safeExternalUrl(applicant.linkedin_url);
             const portfolioUrl = safeExternalUrl(applicant.portfolio_url);
@@ -99,7 +99,7 @@ function renderApplicants() {
                             ${salaryRange ? `<p class="application-meta">Salary expectations (per year): ${escapeHtml(salaryRange)}</p>` : ""}
                             ${applicant.relevant_experience ? `<p class="cover-note"><strong>Relevant experience:</strong><br>${escapeHtml(applicant.relevant_experience)}</p>` : ""}
                             ${resumeUrl ? `<p class="application-meta"><a href="${escapeHtml(resumeUrl)}" target="_blank" rel="noopener noreferrer">View resume (${escapeHtml(resumeDisplayName(applicant.resume_path))})</a></p>` : ""}
-                            ${coverLetterUrl ? `<p class="application-meta"><a href="${escapeHtml(coverLetterUrl)}" target="_blank" rel="noopener noreferrer">View additional document (${escapeHtml(resumeDisplayName(applicant.cover_letter_path))})</a></p>` : ""}
+                            ${additionalDocumentUrl ? `<p class="application-meta"><a href="${escapeHtml(additionalDocumentUrl)}" target="_blank" rel="noopener noreferrer">View additional document (${escapeHtml(applicant.additional_document_name || "attached file")})</a></p>` : ""}
                         </div>
                     </details>
                     ${applicant.cover_note ? `<p class="cover-note">${escapeHtml(applicant.cover_note)}</p>` : ""}

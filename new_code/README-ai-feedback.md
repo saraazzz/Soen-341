@@ -10,7 +10,7 @@
 1. Create a Gemini API key in Google AI Studio.
 2. Set environment variables before starting the server:
    - `GEMINI_API_KEY` (required)
-   - `GEMINI_MODEL` (optional; use a model that is on your free tier)
+   - `GEMINI_MODEL` (optional; defaults to `gemini-4-hydrogen`, or use a model available to your API key)
 3. Use Node 18+ (`node -v`).
 4. Run `npm install`, start the server, and open the profile page.
 
