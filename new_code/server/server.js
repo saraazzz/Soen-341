@@ -2361,25 +2361,6 @@ app.put("/api/notifications/read-all", (req, res) => {
     });
 });
 
-// Seed an upcoming deadline notification for demonstration / meeting validation
-app.post("/api/notifications/seed-deadline", (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ message: "Not logged in." });
-    }
-
-    createNotification(db, {
-        userId: req.session.userId,
-        type: 'deadline_reminder',
-        title: 'Application Deadline Approaching',
-        message: '⏰ Reminder: Application deadline for Senior Platform Engineer at CloudTech is tomorrow! Submit your application today.',
-        link: 'jobs.html'
-    }).then(() => {
-        res.json({ message: "Sample deadline reminder generated successfully." });
-    }).catch((err) => {
-        console.error("Seed deadline error:", err);
-        res.status(500).json({ message: "Could not seed deadline reminder." });
-    });
-});
 function ensureSchema(database, done) {
     database.query("SHOW COLUMNS FROM jobs LIKE 'archived_at'", (err, rows) => {
         if (!err && rows && rows.length === 0) {
