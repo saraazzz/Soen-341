@@ -227,5 +227,142 @@ End AI Log Sprint 1 _ September 27th 2026
 
 
 
+
 End AI Log Sprint 2 _ October 26th 2026 
 ------------------------------------------------------------------------------------
+
+
+# AI Usage Log – Sprint 3
+
+### Task 3.1: Establish the Unit Testing Strategy and Structure
+
+**Purpose of AI Use:** Testing guidance and project organization
+
+**Chat Link or Prompt/Response:
+
+**AI-Suggested Content:** AI helped determine how to organize the unit tests for Sprint 3 features and suggested using the existing Jest and Node.js testing frameworks. It explained where different tests should be placed and how to use a single command to execute the project's test suites. The suggested structure separated Jest tests into the `tests/` directory and Node.js built-in tests into the `test/` directory.
+
+**Validation:** Reviewed the existing project structure, package configuration, and testing dependencies. Checked that the proposed locations were compatible with the existing test setup.
+
+**Decision:** Accepted the suggested organization. Established `npm test` as the common command for running the project's automated tests and communicated the appropriate test directories to the team.
+
+**Reflection:** AI helped establish a consistent testing structure for the team. This made it easier for team members to know where to place their tests and how to execute them without having to run different commands manually.
+
+**Responsible Person:** Aminata
+
+
+### Task 3.2: Develop Unit Tests for Application Analytics and Dashboard Functionality
+
+**Purpose of AI Use:** Unit test development and implementation support
+
+**Chat Link or Prompt/Response:** 
+
+**AI-Suggested Content:** AI helped identify important functionality that needed to be tested for Sprint 3, including application information, application statuses, dashboard data, and the presentation of application information. It assisted in developing test cases and organizing the tests to verify the expected behavior of the application analytics functionality.
+
+**Validation:** Reviewed the generated test cases against the existing application code and tested the functionality using the project's automated testing framework. Executed the tests to verify that the expected results matched the actual application behavior.
+
+**Decision:** Accepted and modified the suggested test cases where necessary to match the existing implementation and project requirements.
+
+**Reflection:** AI helped translate the application's functionality into individual test cases. It also helped identify different scenarios that needed to be considered when testing application information and dashboard functionality. However, the tests still needed to be executed and checked against the actual code.
+
+**Responsible Person:** Aminata 
+
+
+### Task 3.3: Develop Unit Tests for Recruiter Application Management
+
+**Purpose of AI Use:** Unit testing and business logic verification
+
+**Chat Link or Prompt/Response:** 
+
+**AI-Suggested Content:** AI assisted in developing tests for recruiter application management functionality. It helped examine application-related operations, including retrieving applications, displaying application information, handling application statuses, and verifying the expected behavior of recruiter dashboard functionality.
+
+**Validation:** Compared the suggested test cases with the existing backend implementation and application management logic. Ran the tests and investigated failures to determine whether the issue was related to the test expectations or the actual implementation.
+
+**Decision:** Accepted and modified the suggested tests based on the application's existing functionality. Organized additional recruiter dashboard tests in the appropriate testing directory.
+
+**Reflection:** AI helped break down recruiter application management into smaller testable components. It also helped explain how to verify that the backend returned the correct information and handled application-related operations as expected.
+
+**Responsible Person:** Aminata 
+
+
+### Task 3.4: Test Application Metrics and Acceptance Criteria
+
+**Purpose of AI Use:** Test case development and requirements verification
+
+**Chat Link or Prompt/Response:** 
+
+**AI-Suggested Content:** AI helped develop tests for application metrics and the expected behavior of different application-related operations. It also assisted in organizing the test cases around Sprint 3 functionality and reviewing how application information should be retrieved and presented for different user roles.
+
+**Validation:** Reviewed the tests against the existing application logic, SQL queries, and Sprint 3 requirements. Executed the tests using Node.js and Jest to verify the expected results.
+
+**Decision:** Accepted the suggested testing approach with modifications to match the actual database structure and implementation. Added tests to verify the relevant application metrics and functionality.
+
+**Reflection:** AI helped identify potential scenarios that could otherwise be overlooked during testing. It was particularly useful for understanding how different application operations should behave and how to verify their expected results.
+
+**Responsible Person:** Aminata 
+
+
+### Task 3.5: Configure and Verify the Automated Testing Process
+
+**Purpose of AI Use:** Continuous integration and testing automation
+
+**Chat Link or Prompt/Response:** 
+
+**AI-Suggested Content:** AI provided guidance on configuring and verifying the automated testing process. It helped explain how the `npm test` command executes the project's Jest and Node.js test suites and how the testing command can be used as part of the continuous integration workflow.
+
+**Validation:** Executed `npm test` locally and reviewed the output to confirm that both testing frameworks were running. Also reviewed the project's GitHub Actions workflow to verify the automated testing process.
+
+**Decision:** Accepted the suggested testing command and used it as the standard command for executing the project's automated tests. Made adjustments where necessary to ensure that the test suites could run together.
+
+**Reflection:** AI helped clarify the relationship between unit testing and continuous integration. It also helped explain how automated tests can be executed whenever code changes are pushed, allowing potential issues to be identified earlier in the development process.
+
+**Responsible Person:** Aminata 
+
+
+### Task 3.6: Debug and Verify Automated Tests
+
+**Purpose of AI Use:** Debugging, troubleshooting, and code verification
+
+**Chat Link or Prompt/Response:** 
+
+**AI-Suggested Content:** AI analyzed test output, code snippets, SQL queries, and error messages to help identify potential causes of test failures. It suggested modifications to test expectations and helped investigate issues involving application data, database queries, and application presentation logic.
+
+**Validation:** Applied the suggested changes and reran the automated tests. Compared the results before and after modifications to determine whether the changes resolved the issues without breaking existing functionality.
+
+**Decision:** Accepted some suggestions and modified others based on the actual test results and application behavior. Verified the final testing results by executing the complete test suite.
+
+**Reflection:** AI was useful for understanding test failures and identifying possible causes of unexpected results. However, some suggestions required further investigation and adjustments. Running the tests after each modification was necessary to confirm that the changes were correct.
+
+**Responsible Person:** Aminata 
+
+
+### Task 3.7: Execute the Complete Test Suite and Review Results
+
+**Purpose of AI Use:** Testing verification and quality assurance
+
+**Chat Link or Prompt/Response:** 
+
+**AI-Suggested Content:** AI helped interpret the output of the project's `npm test` command and distinguish between successful test execution, test failures, and warnings. It also helped explain how the Jest and Node.js test results contributed to the overall verification of the application.
+
+**Validation:** Executed the complete test suite using `npm test`. Reviewed the output and confirmed that 29 Jest tests and 20 Node.js tests passed successfully, for a total of 49 passing tests.
+
+**Decision:** Accepted the testing results after reviewing the output and confirming that all 49 tests passed.
+
+**Reflection:** AI helped make the testing process easier to understand and troubleshoot. The successful execution of all 49 tests provided additional confidence in the application's functionality and demonstrated the importance of running automated tests before considering development work complete.
+
+**Responsible Person:** Aminata 
+
+
+### Overall Reflection
+
+During Sprint 3, AI was primarily used as a development and testing assistant. It helped establish a consistent unit testing structure, develop test cases for application analytics and recruiter functionality, configure and verify the automated testing process, and troubleshoot issues encountered during test execution.
+
+AI suggestions were not accepted automatically. Test cases and proposed code changes were reviewed against the existing implementation, project requirements, and actual test results. The complete test suite was successfully executed, with 49 tests passing across Jest and Node.js.
+
+Overall, AI helped improve the efficiency of the testing process, clarify testing concepts, and support the verification of the CareerConnect application during Sprint 3.
+
+
+
+End AI Log Sprint 3 _ November 16th 2026 
+------------------------------------------------------------------------------------
+
