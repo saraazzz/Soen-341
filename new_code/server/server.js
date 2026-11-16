@@ -1555,10 +1555,12 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
 
     // Check availability on the server even if the seeker still has an old page open.
     const jobSql = `
-        SELECT id, archived_at, (deadline_at IS NOT NULL AND deadline_at <= UTC_TIMESTAMP()) AS deadline_passed
-        FROM jobs
-        WHERE id = ?
-    `;
+    SELECT id, archived_at,
+           (deadline_at IS NOT NULL AND deadline_at <= UTC_TIMESTAMP()) AS deadline_passed,
+           employer_id, title
+    FROM jobs
+    WHERE id = ?
+`;
 
     db.query(jobSql, [jobId], (jobError, jobs) => {
         if (jobError) {
@@ -1646,21 +1648,13 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                     }
 
                     // Notify recruiter about the new application (Event 1)
-                    db.query(
-                        "SELECT employer_id, title FROM jobs WHERE id = ?",
-                        [jobId],
-                        (jobLookupErr, jobLookupRows) => {
-                            if (!jobLookupErr && jobLookupRows && jobLookupRows.length > 0) {
-                                createNotification(db, {
-                                    userId: jobLookupRows[0].employer_id,
-                                    type: 'new_application',
-                                    title: 'New Application Received',
-                                    message: `A candidate submitted an application for "${jobLookupRows[0].title}".`,
-                                    link: `employer-applicants.html?job_id=${jobId}`
-                                }).catch(() => {});
-                            }
-                        }
-                    );
+createNotification(db, {
+    userId: jobs[0].employer_id,
+    type: "new_application",
+    title: "New Application Received",
+    message: `A candidate submitted an application for "${jobs[0].title}".`,
+    link: `employer-applicants.html?job_id=${jobId}`
+}).catch(() => {});
 
                     unattachedFiles = [];
                     unattachedPrivateFiles = [];
