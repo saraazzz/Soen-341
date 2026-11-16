@@ -48,6 +48,7 @@ async function loadSettingsPage() {
 
         const profile = await response.json();
         const links = document.getElementById("nav-links");
+        if (links?.dataset.navbarManaged) return;
 
         const jobSeekerLinks = [
             ["Profile", "Profile.html", "person"],

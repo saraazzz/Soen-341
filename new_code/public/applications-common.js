@@ -49,6 +49,13 @@ function escapeHtml(value) {
         .replaceAll("'", "&#39;");
 }
 
+function resumeDisplayName(resumePath) {
+    const fileName = String(resumePath ?? "").split(/[\\/]/).pop() || "";
+    return fileName
+        .replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, "")
+        .replace(/^\d+-/, "") || "Resume";
+}
+
 function statusClass(status) {
     return "status-" + String(status).toLowerCase().replace(/\s+/g, "-");
 }
@@ -75,6 +82,15 @@ function formatDate(value) {
     });
 }
 
+async function readApiJson(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!/\bjson\b/i.test(contentType)) {
+        throw new Error("CareerConnect returned a webpage instead of API data. Open the dashboard at http://localhost:3000/Dashboard.html and sign in again.");
+    }
+
+    return response.json();
+}
+
 async function requireRole(expectedRole, wrongRolePage) {
     const response = await fetch("/api/profile");
 
@@ -87,7 +103,7 @@ async function requireRole(expectedRole, wrongRolePage) {
         throw new Error("Could not check the current account.");
     }
 
-    const profile = await response.json();
+    const profile = await readApiJson(response);
 
     if (profile.role !== expectedRole) {
         window.location.href = wrongRolePage;

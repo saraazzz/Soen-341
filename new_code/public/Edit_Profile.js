@@ -127,7 +127,6 @@ if (location.length < 2 || location.length > 255) {
     return;
 }
 
-
 // About validation
 
 

@@ -1,11 +1,10 @@
 const jobDetail = document.getElementById("job-detail");
-const applyForm = document.getElementById("apply-form");
-const applyButton = document.getElementById("apply-button");
-const applyError = document.getElementById("apply-error");
+const applyJobLink = document.getElementById("apply-job-link");
 const confirmation = document.getElementById("confirmation");
 const pageMessage = document.getElementById("page-message");
 const params = new URLSearchParams(window.location.search);
 const jobId = Number(params.get("id"));
+let applicationSubmitting = false; // apply form moved to apply.html
 
 function showPageMessage(message) {
     pageMessage.hidden = false;
@@ -55,7 +54,7 @@ async function loadJob() {
     jobLoading = true;
     retryJob.hidden = true;
     retryJob.disabled = true;
-    applyForm.hidden = true;
+    if (applyJobLink) applyJobLink.hidden = true;
     confirmation.hidden = true;
     jobDetail.hidden = true;
     jobDetail.setAttribute('aria-busy', 'true');
@@ -108,7 +107,10 @@ async function loadJob() {
             showPageMessage('Employers can post jobs, but only job seekers can apply.');
             return;
         }
-        applyForm.hidden = false;
+        if (applyJobLink) {
+            applyJobLink.href = `apply.html?id=${jobId}`;
+            applyJobLink.hidden = false;
+        }
     } catch (error) {
         console.error('Job detail error:', error);
         showPageMessage('Could not load that job. Please try again.');
@@ -120,65 +122,5 @@ async function loadJob() {
     }
 }
 retryJob.addEventListener('click', loadJob);
-
-// Stage 3B: Guard repeat requests and preserve the note when a submission fails.
-let applicationSubmitting = false;
-applyForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (applicationSubmitting || applyForm.hidden || !applyForm.reportValidity()) return;
-    applicationSubmitting = true;
-    applyError.hidden = true;
-    applyButton.disabled = true;
-    applyButton.textContent = 'Submitting...';
-    applyForm.setAttribute('aria-busy', 'true');
-
-    try {
-        const response = await fetch("/api/applications", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                jobId: jobId,
-                coverNote: document.getElementById("cover-note").value
-            })
-        });
-
-        // Expired sessions and wrong-role accounts use the same redirects as the list pages.
-        if (response.status === 401 || response.status === 403) {
-            window.location.href = response.status === 401 ? 'login.html' : 'Employer_Dashboard.html';
-            return;
-        }
-        const data = await response.json();
-
-        if (response.ok) {
-            applyForm.hidden = true;
-            showConfirmation(
-                data.message || "Application submitted successfully.",
-                data.application?.status || "Applied"
-            );
-            return;
-        }
-
-        if (response.status === 409) {
-            applyForm.hidden = true;
-            // A conflict means an application exists, but does not tell us its current status.
-            showPageMessage('You have already applied. Check My Applications for its current status.');
-            retryJob.hidden = false;
-            return;
-        }
-
-        showApplyError(data.message || "Could not submit application.");
-        applyButton.disabled = false;
-    } catch (error) {
-        console.error("Apply error:", error);
-        showApplyError("Could not connect to the server.");
-    } finally {
-        applicationSubmitting = false;
-        applyButton.disabled = false;
-        applyButton.textContent = 'Apply';
-        applyForm.setAttribute('aria-busy', 'false');
-    }
-});
 
 loadJob();

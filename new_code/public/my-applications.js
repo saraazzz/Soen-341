@@ -19,15 +19,26 @@ function renderApplications() {
         return;
     }
     showApplicationsMessage('');
-        applicationsList.innerHTML = visible.map((application) => `
-            <article class="application-card">
-                <h2>${escapeHtml(application.title)}</h2>
-                <p class="application-meta">${escapeHtml(application.company_name || "Company")}</p>
-                <p class="application-meta">${escapeHtml(application.location || "Location not listed")}</p>
-                <p class="application-meta">Applied ${escapeHtml(formatDate(application.applied_at))}</p>
-                <p>${APPLICATION_STATUSES.includes(application.status) ? statusBadge(application.status) : escapeHtml(application.status || "Unavailable")}</p>
-            </article>
-        `).join("");
+        applicationsList.innerHTML = visible.map((application) => {
+            const resumeUrl = application.resume_path
+                ? `/${String(application.resume_path).split("/").map(encodeURIComponent).join("/")}`
+                : "";
+            const coverLetterUrl = application.cover_letter_path
+                ? `/${String(application.cover_letter_path).split("/").map(encodeURIComponent).join("/")}`
+                : "";
+
+            return `
+                <article class="application-card">
+                    <h2>${escapeHtml(application.title)}</h2>
+                    <p class="application-meta">${escapeHtml(application.company_name || "Company")}</p>
+                    <p class="application-meta">${escapeHtml(application.location || "Location not listed")}</p>
+                    <p class="application-meta">Applied ${escapeHtml(formatDate(application.applied_at))}</p>
+                    <p>${APPLICATION_STATUSES.includes(application.status) ? statusBadge(application.status) : escapeHtml(application.status || "Unavailable")}</p>
+                    ${resumeUrl ? `<p class="application-meta"><a href="${escapeHtml(resumeUrl)}" target="_blank" rel="noopener noreferrer">View attached resume (${escapeHtml(resumeDisplayName(application.resume_path))})</a></p>` : ""}
+                    ${coverLetterUrl ? `<p class="application-meta"><a href="${escapeHtml(coverLetterUrl)}" target="_blank" rel="noopener noreferrer">View additional document (${escapeHtml(resumeDisplayName(application.cover_letter_path))})</a></p>` : ""}
+                </article>
+            `;
+        }).join("");
 }
 
 async function loadApplications() {

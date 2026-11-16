@@ -52,7 +52,7 @@ async function loadSeekerApplications() {
             return;
         }
         if (!response.ok) throw new Error('Could not load applications.');
-        const applications = await response.json();
+        const applications = await readApiJson(response);
         if (!Array.isArray(applications) || applications.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
             throw new Error('Unexpected applications response.');
         }
@@ -105,7 +105,7 @@ async function startSeekerDashboard() {
         // A missing resume_path column currently makes /api/profile fail for job seekers.
         // Show the verification failure rather than bypassing account checks or editing the schema.
         setSeekerCounts('Unavailable');
-        seekerMessage('account-message', 'Could not verify your account. Please try again.');
+        seekerMessage('account-message', error.message || 'Could not verify your account. Please try again.');
         seekerMessage('applications-message', 'Account verification is required to load applications.');
         seekerElement('application-section').setAttribute('aria-busy', 'false');
         retry.hidden = false;
