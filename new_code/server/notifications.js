@@ -27,19 +27,6 @@ function ensureNotificationsTable(db) {
         db.query("ALTER TABLE notifications MODIFY COLUMN type ENUM('new_application', 'status_update', 'interview_invite', 'job_offer', 'deadline_reminder') NOT NULL", () => {});
     });
 
-    // Safely check if deadline column exists in jobs
-    const colSql = `
-        SELECT COUNT(*) AS count
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'jobs'
-          AND COLUMN_NAME = 'deadline'
-    `;
-    db.query(colSql, (err, rows) => {
-        if (!err && rows && rows[0] && rows[0].count === 0) {
-            db.query("ALTER TABLE jobs ADD COLUMN deadline DATE NULL DEFAULT NULL", () => {});
-        }
-    });
 }
 
 function createNotification(db, { userId, type, title, message, link }) {
@@ -69,12 +56,12 @@ function checkAndNotifyDeadlines(db, userId) {
     // Find jobs with an approaching deadline in the next 3 days
     // where user has not applied and has not been notified yet
     const sql = `
-        SELECT jobs.id, jobs.title, jobs.company, jobs.deadline
+        SELECT jobs.id, jobs.title, jobs.company, jobs.deadline_at
         FROM jobs
         WHERE jobs.archived_at IS NULL
-          AND jobs.deadline IS NOT NULL
-          AND jobs.deadline >= CURDATE()
-          AND jobs.deadline <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+          AND jobs.deadline_at IS NOT NULL
+          AND jobs.deadline_at >= UTC_TIMESTAMP()
+          AND jobs.deadline_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 DAY)
           AND NOT EXISTS (
               SELECT 1 FROM applications
               WHERE applications.job_id = jobs.id
@@ -93,7 +80,7 @@ function checkAndNotifyDeadlines(db, userId) {
         if (err || !jobs || jobs.length === 0) return;
 
         jobs.forEach((job) => {
-            const formattedDate = new Date(job.deadline).toLocaleDateString('en-US', {
+            const formattedDate = new Date(job.deadline_at).toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric'
             });
