@@ -115,19 +115,3 @@ Validation: Cross-checked the proposed commit hashes, pull request numbers, and 
 Decision: Accepted the structured table and added it directly into `Contribution_Logs/Elfy_Sprint2.md`.
 Reflection: AI was very effective at turning multiple scattered commits and merges into a clear, cohesive retrospective report that aligned with the course grading rubric.
 Responsible person: Ariane
-
---> Task 3: Sprint 3 Development, Debugging, and Documentation
-Purpose of AI Use: Use AI for guidance with resume feedback, application details, testing questions, and deadline notifications.
-AI-Assisted Work:
-
-| Date | Task | AI assistance | Human review / outcome |
-|---|---|---|---|
-| November 10–12, 2026 | AI resume feedback | Helped explore how resume content could be compared with a selected job posting and how feedback could be presented. | Reviewed the suggestions and directed development of the resume-feedback flow. |
-| November 13–14, 2026 | Resume file support and job selection | Helped consider PDF, DOC, and DOCX handling and clarify that job choices should be limited to jobs the seeker had applied to. | Reviewed the requirements and directed support for those formats and applied-job filtering. |
-| November 15, 2026 | Job application details | Helped identify application information and documents employers should be able to review. | Reviewed and directed updates to the application form and employer-facing details. |
-| November 16, 2026 | Testing and deadline notifications | Helped analyze a database-query-count failure, inspect notification code, and identify that reminders used `deadline` while postings stored `deadline_at`. | Reviewed the code changes, aligned reminders with `deadline_at`, and removed the demo notification controls and endpoint while preserving real reminders. |
-
-Validation: Reviewed AI suggestions against project code, the test snippets, and the requested feature behavior. The automated test suite was not run after the latest deadline-notification changes.
-Decision: Accepted with modifications after human review. Final implementation choices were made by the project contributor.
-Reflection: AI helped explain the application flow, trace a test failure, and identify the deadline-field mismatch. Checking the repository was necessary because local and PR versions of the code differed.
-Responsible person: Ariane
