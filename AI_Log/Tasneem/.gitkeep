@@ -60,3 +60,47 @@ Validation: Testes filters and filtering combinations on http://localhost:3000/j
 Decision: Accepted with modifications. Instead of having the filters be applied immeadiately after clicking on them, I wanted the user to be able to select all of their filters and then applying them together at once. So I added a "Apply Filters" button, that applies all of the suggested filters at once. 
 Reflection: Antigravity implemented the job details page whilst keeping me up to date with the changes it was making, as it did during implementation of the job description page. I made some modifications were made, like adding the "Apply filters" button and rejecting the idea to add a filter chip for Job Mode (On-site, Hybrid, Remote).
 
+# AI Usage Log - Sprint 3
+
+Task 1: Implementation of notification and reminder feature
+Purpose of AI: Implement a notification and reminder system for the SOEN 341 job-search website. The system should notify recruiters when a new application is submitted and notify job seekers when their application status changes, when they receive an interview invitation, or when an upcoming application deadline is approaching.
+Conversation ID (Antigravity - Google DeepMind): 5b928df4-8a80-4f48-ac58-09c06a6db2a3
+AI-Suggested Content: 
+- A notification bell icon in the website's purple header, displaying a badge indicating the number of unread notifications.
+  -  A dropdown notification panel displaying notifications from newest to oldest.
+  - Clickable notifications that redirect users to the relevant job or application page.
+  - A feature to mark all notifications as read.
+  - Relative timestamps and an empty-state message when there are no notifications.
+- A MySQL notifications table, created through the migration file 004_create_notifications.sql, to store notifications persistently.
+- Backend notification functionality in server/notifications.js, including routes and user-specific notification retrieval.
+- Four notification triggers (New Application: Seeker --> Recruiter, Application status Update: recruiter --> Seeker, Interview Notification: recruiter --> Seeker, Upcoming Deadline: recruiter --> Seeker)
+Validation: Antigravity reported that the notification functionality was implemented and that 27 tests passed.
+Decision: Accepted with modifications. The notification system was implemented as a new feature, with additional changes and troubleshooting required to integrate it with the existing project.
+Reflection: Antigravity helped implement the notification system, including its frontend, backend, and database components. However, I encountered a few issues with database errors from other teammate's migrations, which were also solved with the help of Antigravity. Now I know I should check the database often and stay updated on changes made to the database by other teammates.
+
+Task 2: Notification Customization
+Purpose of AI: To refine the notification system by improving the notification displayed when an application receives an Offered status.
+Conversation ID (Antigravity - Google DeepMind): 5b928df4-8a80-4f48-ac58-09c06a6db2a3
+AI-Suggested Content:
+- Customize the Offered status notification so that it is treated as a major milestone, similar to an interview invitation.
+- Introduce a dedicated job_offer notification type and display the title "Job Offer Received!", accompanied by a congratulatory message containing the job title and company name.
+- Redirect job offer notifications to the relevant job description page, following the same navigation behavior as interview invitations.
+- Keep Under Review and Rejected notifications under the general status_update notification type.
+Validation: The Offered notification was tested by changing an applicant's status through the recruiter dashboard and then checking the seeker's notification bell.
+Decision: Accepted. I wanted the Offered status to receive more prominent treatment because receiving a job offer is an important milestone for a job seeker.
+Reflection: Antigravity helped implement a better notification UI for Offer notifications. I had no issues with AI for this part. However, it guided me when writing git commands, which was very helpful.
+
+Task 3: Git Troubleshooting and Database Integration
+Purpose of AI: Troubleshoot issues encountered while managing the notification feature's Git branch and integrating it with the team's existing code and database migrations.
+Conversation ID (Antigravity - Google DeepMind): 5b928df4-8a80-4f48-ac58-09c06a6db2a3
+AI-Suggested Content:
+- Inspected Git status and commit history, identified commit fb7a571 on origin/feature/notifications as containing the notification system implementation, and clarified the differences between creating, previewing, resolving conflicts, and merging pull requests.
+- Recommended using git restore . to recover deleted tracked files, explaining that it discards uncommitted changes, and identified two untracked files: 004_optional_posting_deadlines.sql and posting-deadlines.js.
+- Provided instructions for starting MySQL with brew services start mysql and launching the Node.js server with node server/server.js.
+- Identified missing database columns and the required team migrations (002_link_submitted_application_resumes.sql, 003_archive_job_postings.sql, and 004_create_notifications.sql), explaining that they must be executed locally to synchronize the database schema with the team's code.
+Validation: Successfully restored the tracked notification files using git restore . and confirmed the branch was up to date with origin/feature/notifications. Encountered missing database columns (jobs.archived_at and applications.submitted_resume_original_name) and successfully ran migration 002_link_submitted_application_resumes.sql.
+Decision: Accepted. All of Antigravity's suggestions were used to avoid and fix errors.
+Reflection: Antigravity helped me successfully troubleshoot errors. It also taught me a lot about git commands and how to use them. However, I reach the quota for Antigravity agent so I couldn't troubleshoot later errors.
+
+
+
