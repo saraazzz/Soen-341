@@ -115,3 +115,30 @@ Validation: Cross-checked the proposed commit hashes, pull request numbers, and 
 Decision: Accepted the structured table and added it directly into `Contribution_Logs/Elfy_Sprint2.md`.
 Reflection: AI was very effective at turning multiple scattered commits and merges into a clear, cohesive retrospective report that aligned with the course grading rubric.
 Responsible person: Ariane
+
+--> Task 3.1: AI Resume Feedback for Applied Jobs
+Purpose of AI Use: Get assistance implementing and reviewing resume feedback against a selected job posting, including support for PDF, DOC, and DOCX resumes.
+Chat Link or Prompt/Response: Prompts included asking how to support DOC and DOCX resumes, how to display Word resumes in the profile iframe, and limiting job choices to postings the seeker had applied to. The conversation is available in Codex; no share link was created.
+AI-Suggested Content: Helped inspect the resume feedback flow, reason about supported file formats and job selection, and identify changes to align the feature with the requested behavior.
+Validation: Reviewed the feedback flow and selected-job behavior in the project. The job selector was specified to show only jobs the seeker had applied to.
+Decision: Accepted with modifications. The suggestions were reviewed and adjusted to match the project requirements.
+Reflection: AI assistance helped explain and refine the resume feedback flow. Reviewing the actual project behavior was necessary to ensure the selected job and uploaded resume were the intended inputs.
+Responsible person: Ariane
+
+--> Task 3.2: Job Application Details for Employers
+Purpose of AI Use: Get coding assistance for collecting additional job application details and making submitted details and documents available to the employer reviewing the application.
+Chat Link or Prompt/Response: Prompts asked for application fields to be added and for employers to be able to view the submitted details. The conversation is available in Codex; no share link was created.
+AI-Suggested Content: Reviewed the application and employer-view code and suggested implementation changes to connect submitted application information to the employer-facing view.
+Validation: Reviewed the resulting application flow and the employer-facing details against the requested behavior.
+Decision: Accepted with modifications after reviewing the code and feature behavior.
+Reflection: AI helped trace how application information moves between the form, server, and employer view. The implementation was reviewed against the expected application workflow.
+Responsible person: Ariane
+
+--> Task 3.3: Test Failure and Deadline Notification Updates
+Purpose of AI Use: Understand a failing application submission test and investigate why deadline reminders were not using the job posting deadline field.
+Chat Link or Prompt/Response: Prompts included asking what the Jest query-count failure meant, how to reduce the redundant query, and how deadline notifications worked. The conversation is available in Codex; no share link was created.
+AI-Suggested Content: Explained how to inspect database query calls, identified that the reminder code referenced `deadline` while postings stored `deadline_at`, and suggested removing the duplicate demo notification endpoint and controls when requested.
+Validation: Reviewed the relevant route, notification helper, and test code. Updated the reminder field to `deadline_at` and removed the seed-demo endpoint, button, handler, and CSS. The automated test suite was not run after these latest changes.
+Decision: Accepted the reviewed changes and directed their application to the project branch.
+Reflection: AI helped connect the test output to the server query flow and identify a schema-field mismatch. Reviewing the branch code was important because earlier local and PR versions differed.
+Responsible person: Ariane
