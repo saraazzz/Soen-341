@@ -171,6 +171,22 @@ This document serves as the central repository for all project user stories and 
   - [ ] Task 15.2: Implement API endpoints to send and retrieve messages
   - [ ] Task 15.3: Build UI messaging interface (conversation list + chat window)
 
+#### US-16: AI Job Matching
+* **User story:** As a job seeker, I want recommendations based on my skills, experience, education, and preferences so that I can find open jobs that fit my background.
+* **Acceptance Criteria:**
+  - [ ] Recommendations use existing open job ids and link to those job details
+  - [ ] Each recommendation explains the evidence and lists gaps against the posting
+  - [ ] Archived, expired, and already-applied jobs are not recommended
+  - [ ] A seeker with no resume can still get recommendations from the profile
+  - [ ] No open jobs and no suitable matches show a clear empty state
+  - [ ] Invented, duplicate, or malformed recommendations are not displayed
+* **Tasks:**
+  - [ ] Task 16.1: Retrieve a bounded set of open postings for the logged-in seeker
+  - [ ] Task 16.2: Request structured recommendations from the shared Gemini support
+  - [ ] Task 16.3: Validate job ids and recheck that jobs are still open
+  - [ ] Task 16.4: Build the job-matches page and entry points from Jobs and the dashboard
+  - [ ] Task 16.5: Cover authentication, isolation, empty states, and invalid model output with tests
+
 ---
 
 **Document Owner:** Angelina Yajaira Montano

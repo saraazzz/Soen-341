@@ -11,6 +11,7 @@ USE recruiting_website;
 -- Users
 DROP TABLE IF EXISTS `applications`;
 DROP TABLE IF EXISTS `jobs`;
+DROP TABLE IF EXISTS `job_seeker_match_profile`;
 DROP TABLE IF EXISTS `job_seeker_skills`;
 DROP TABLE IF EXISTS `job_seeker_profiles`;
 DROP TABLE IF EXISTS `employer_profiles`;
@@ -69,6 +70,23 @@ CREATE TABLE `job_seeker_skills` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   CONSTRAINT `job_seeker_skills_ibfk_1`
+    FOREIGN KEY (`user_id`)
+    REFERENCES `users` (`id`)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Education, experience, and job-search preferences used by AI job matching.
+CREATE TABLE `job_seeker_match_profile` (
+  `user_id` int NOT NULL,
+  `education` text,
+  `experience` text,
+  `preferred_job_type` varchar(40) DEFAULT NULL,
+  `preferred_location` varchar(255) DEFAULT NULL,
+  `preferred_category` varchar(100) DEFAULT NULL,
+  `preferences_note` text,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`),
+  CONSTRAINT `job_seeker_match_profile_ibfk_1`
     FOREIGN KEY (`user_id`)
     REFERENCES `users` (`id`)
     ON DELETE CASCADE
