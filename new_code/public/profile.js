@@ -106,7 +106,7 @@ if (!response.ok) {
             resumeIframe.src = "/api/profile/resume/preview";
         } else {
             resumeIframe.removeAttribute("sandbox");
-            resumeIframe.src = profile.resume_path;
+            resumeIframe.src = "/api/profile/resume";
         }
         resumePreview.removeAttribute("hidden");
         resumeBox.setAttribute("hidden", "hidden");

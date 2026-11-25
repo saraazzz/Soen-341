@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const WordExtractor = require('word-extractor');
+const { resolveProfileResume } = require('../application-resumes');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
@@ -135,9 +136,8 @@ router.post('/', (req, res) => {
           return res.status(400).json({ error: 'Your profile resume must be a PDF, DOC, or DOCX file.' });
         }
 
-        const uploadsDir = path.resolve('public/uploads');
-        const file = path.resolve('public', resumePath);
-        if (!file.startsWith(uploadsDir + path.sep) || !fs.existsSync(file)) {
+        const file = resolveProfileResume(resumePath);
+        if (!file) {
           return res.status(400).json({ error: 'Your resume file could not be found. Upload it again.' });
         }
         if (fs.statSync(file).size > MAX_RESUME_BYTES) {

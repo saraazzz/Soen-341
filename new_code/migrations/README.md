@@ -79,9 +79,9 @@ SOURCE new_code/migrations/004_create_notifications.sql;
 ```
 
 It creates the `notifications` table (storing user-specific notifications for new applications, status updates, interview invitations, and deadline reminders) and safely adds an optional `deadline` column to `jobs`. Existing tables and data are fully preserved.
-## Optional deadlines (004)
+## Optional deadlines (005)
 
-`004_optional_posting_deadlines.sql` adds nullable `jobs.deadline_at` and its index.
+`005_optional_posting_deadlines.sql` adds nullable `jobs.deadline_at` and its index.
 Apply once after 003, before starting the deadline-enabled server. Existing rows
 get NULL (no deadline). This migration has not been applied by the authoring step.
 
@@ -96,3 +96,20 @@ The running server archives expired postings at startup and every 60 seconds.
 Search and application inserts enforce the UTC deadline immediately, independently
 of the worker. Archived postings are not reopened by changing or removing a deadline.
 The worker retains original archive dates and all existing applications.
+
+## Deprecate deadline database column (006)
+
+`006_deprecate_deadline.sql` removes the unused `jobs.deadline` column added by `004`.
+The server uses `jobs.deadline_at` exclusively; `deadline` was never read or written
+in active code. Existing jobs and their deadline_at values are preserved.
+
+## Resume ownership (007)
+
+`007_add_resume_owner.sql` adds a nullable `user_id` column to the `resumes` table
+and links it to `users(id)` with `ON DELETE CASCADE`. Existing resume records are
+preserved with `user_id = NULL`. Orphaned records (NULL owner) are excluded from
+all application queries. Apply once after 006.
+
+```sql
+SOURCE new_code/migrations/007_add_resume_owner.sql;
+```

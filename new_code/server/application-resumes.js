@@ -4,7 +4,10 @@ const path = require("path");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const APPLICATION_RESUME_DIR = path.join(__dirname, "..", "private", "application-resumes");
-
+const PROFILE_RESUME_DIR = process.env.PROFILE_RESUME_DIR
+    ? path.resolve(process.env.PROFILE_RESUME_DIR)
+    : path.join(__dirname, "..", "private", "profile-resumes");
+    
 function resolveInside(rootDir, relativePath) {
     if (!relativePath || typeof relativePath !== "string") {
         return null;
@@ -21,6 +24,26 @@ function resolveInside(rootDir, relativePath) {
     return resolved;
 }
 
+function resolveProfileResume(storedPath) {
+    if (!storedPath || typeof storedPath !== "string") {
+        return null;
+    }
+
+    // 1. Check new private location (if stored as bare filename or relative path)
+    const privateResolved = resolveInside(PROFILE_RESUME_DIR, path.basename(storedPath));
+    if (privateResolved && fs.existsSync(privateResolved) && fs.statSync(privateResolved).isFile()) {
+        return privateResolved;
+    }
+
+    // 2. Check legacy location (stored like "uploads/123-resume.pdf" inside public/)
+    const publicResolved = resolveInside(PUBLIC_DIR, storedPath);
+    if (publicResolved && fs.existsSync(publicResolved) && fs.statSync(publicResolved).isFile()) {
+        return publicResolved;
+    }
+
+    return null;
+}
+
 function snapshotProfileResume({
     sourceRelativePath,
     sourceRoot,
@@ -32,7 +55,7 @@ function snapshotProfileResume({
         return { file: null, originalName: null, missing: false };
     }
 
-    const resolved = resolveInside(sourceRoot, sourceRelativePath);
+    const resolved = resolveProfileResume(sourceRelativePath) || resolveInside(sourceRoot, sourceRelativePath);
 
     if (!resolved) {
         const error = new Error("Resume path is outside the uploads directory.");
@@ -147,13 +170,23 @@ function unlinkPublicUpload(relativePath, publicRoot) {
     fs.unlink(resolved, () => {});
 }
 
+function unlinkProfileResume(storedPath) {
+    const resolved = resolveProfileResume(storedPath);
+    if (resolved) {
+        fs.unlink(resolved, () => {});
+    }
+}
+
 module.exports = {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
+    PROFILE_RESUME_DIR,
+    resolveProfileResume, 
     snapshotProfileResume,
     storeUploadedFile,
     resolveStoredResume,
     resolveStoredApplicationDocument,
     removeStoredResume,
-    unlinkPublicUpload
+    unlinkPublicUpload,
+    unlinkProfileResume
 };
