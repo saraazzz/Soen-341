@@ -6,7 +6,9 @@ const fs = require("fs");
 const path = require("path");
 
 const bcrypt = require("bcrypt");
-const session = require("express-session");
+const { readRuntimeConfig } = require("./runtime-config");
+const { databaseOptions } = require("./database-options");
+const { createSessionResources, establishSession } = require("./session-config");
 
 const multer = require("multer");
 const mammoth = require("mammoth");
@@ -99,7 +101,19 @@ const { parseDeadline } = require("./posting-deadlines");
 const { startDeadlineArchiver } = require("./deadline-archiver");
 const { ensureMatchProfileTable } = require("./job-matching");
 const app = express();
-const PORT = 3000;
+const runtime = readRuntimeConfig();
+const PORT = runtime.port;
+const sessionResources = createSessionResources(runtime);
+app.set("trust proxy", runtime.trustProxy);
+
+// Liveness does not need a database or an authenticated session.
+app.get("/health/live", (req, res) => res.json({ status: "ok" }));
+app.get("/health/ready", (req, res) => {
+    db.query({ sql: "SELECT 1", timeout: 3000 }, (error) => {
+        res.set("Cache-Control", "no-store");
+        res.status(error ? 503 : 200).json({ status: error ? "unavailable" : "ready" });
+    });
+});
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -107,11 +121,7 @@ app.use(express.json());
 app.use('/api/resumes', require('./routes/resumes'));
 
 
-app.use(session({
-    secret: "careerconnect-secret",
-    resave: false,
-    saveUninitialized: false,
-}));
+app.use(sessionResources.middleware);
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/job-matching', require('./routes/job-matching'));
 
@@ -120,13 +130,7 @@ app.use(express.static("public"));
 
 
  // MySQL connection
-const db = mysql.createConnection({
-    host: process.env.DB_HOST || "127.0.0.1",
-    port: Number(process.env.DB_PORT || 3306),
-    user: process.env.DB_USER || "root",
-    password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "recruiting_website"
-});
+const db = mysql.createConnection(databaseOptions());
 
 app.set("db", db);
 
@@ -259,14 +263,7 @@ app.post("/api/register/job-seeker", async (req, res) => {
                             });
                         }
 
-                        req.session.userId = userId;
-                        req.session.role = "job_seeker";
-
-                        console.log("New Job Seeker account created!");
-                        console.log("Email:", email);
-                        console.log("User ID:", userId);
-
-                        res.json({
+                        establishSession(req, res, userId, "job_seeker", {
                             message: "Job Seeker account created successfully!"
                         });
                     }
@@ -343,14 +340,7 @@ app.post("/api/register/employer", async (req, res) => {
                             });
                         }
 
-                        req.session.userId = userId;
-                        req.session.role = "employer";
-
-                        console.log("New Employer account created!");
-                        console.log("Email:", email);
-                        console.log("User ID:", userId);
-
-                        res.json({
+                        establishSession(req, res, userId, "employer", {
                             message: "Employer account created successfully!"
                         });
                     }
@@ -409,15 +399,7 @@ app.post("/api/login", (req, res) => {
             });
         }
 
-        // Save the user's ID and role in the session
-        req.session.userId = user.id;
-        req.session.role = user.role;
-
-        console.log("User logged in!");
-        console.log("User ID:", user.id);
-        console.log("Role:", user.role);
-
-        res.json({
+        establishSession(req, res, user.id, user.role, {
             message: "Login successful!",
             role: user.role
         });
@@ -2403,31 +2385,56 @@ function ensureSchema(database, done) {
     }
 }
 
-// Start MySQL and the server only when running the application directly
+// Start connections/listening only in the real app, not when API tests import it.
 if (require.main === module) {
-
-    db.connect((error) => {
-        if (error) {
-            console.error("MySQL connection failed:", error);
-            return;
+    const { pool: resumePool } = require("./db");
+    async function closeConnections() {
+        await Promise.allSettled([
+            sessionResources.close(),
+            resumePool.end(),
+            new Promise(resolve => db.end(resolve))
+        ]);
+    }
+    async function startupFailed() {
+        console.error("Startup failed. Check database access and apply deployment/sessions.sql when using MySQL sessions.");
+        process.exitCode = 1;
+        await closeConnections();
+    }
+    db.connect(async (error) => {
+        if (error) return startupFailed();
+        try {
+            await sessionResources.ready();
+        } catch {
+            return startupFailed();
         }
-
         console.log("Connected to MySQL database!");
         ensureNotificationsTable(db);
         ensureMatchProfileTable(db);
-
         ensureSchema(db, () => {
-            // Start only in the real app; importing the server in tests starts no timer.
-            // Search and application writes also enforce deadlines between worker checks.
             const stopDeadlineArchiver = startDeadlineArchiver(db);
-            const server = app.listen(PORT, () => {
-                console.log(`Server running at http://localhost:${PORT}`);
+            const server = app.listen(PORT, "0.0.0.0", () => {
+                console.log(`CareerConnect listening on port ${PORT}`);
             });
             server.on("close", stopDeadlineArchiver);
+            server.on("error", () => { stopDeadlineArchiver(); startupFailed(); });
+            let stopping = false;
+            function shutdown() {
+                if (stopping) return;
+                stopping = true;
+                stopDeadlineArchiver();
+                // Let in-flight requests finish before closing their DB connections.
+                const deadline = setTimeout(() => process.exit(1), 10000);
+                deadline.unref();
+                server.close(async () => {
+                    await closeConnections();
+                    clearTimeout(deadline);
+                });
+            }
+            process.once("SIGTERM", shutdown);
+            process.once("SIGINT", shutdown);
         });
     });
-
 }
 
-// Export the Express app for Jest and Supertest
+// Export the Express app for Jest and Supertest.
 module.exports = app;
