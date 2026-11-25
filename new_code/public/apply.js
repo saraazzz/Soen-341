@@ -336,7 +336,11 @@ applyForm.addEventListener("submit", async (event) => {
 
         if (response.status === 409) {
             applyCard.hidden = true;
-            showPageMessage("You have already applied. Check My Applications for its current status.");
+            // A posting can close after this form loads. Both that race and a
+            // duplicate application use HTTP 409, so distinguish the server code.
+            showPageMessage(data.code === "POSTING_UNAVAILABLE"
+                ? (data.message || "This posting is no longer available for applications.")
+                : "You have already applied. Check My Applications for its current status.");
             return;
         }
 
