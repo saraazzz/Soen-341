@@ -6,6 +6,7 @@
     const JOB_SEEKER_LINKS = [
         { label: "My Profile", href: "Profile.html", icon: "person" },
         { label: "Jobs", href: "jobs.html", icon: "briefcase" },
+        { label: "Job Matches", href: "job-matches.html", icon: "stars" },
         { label: "My Applications", href: "my-applications.html", icon: "clipboard-check" },
         { label: "Dashboard", href: "Dashboard.html", icon: "house" },
         { label: "Settings", href: "settings.html", icon: "gear" },

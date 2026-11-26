@@ -5,15 +5,18 @@
 // Never put the key in frontend code or commit it to GitHub.
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const router = express.Router();
 const WordExtractor = require('word-extractor');
-const { resolveProfileResume } = require('../application-resumes');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 const MAX_RESUME_TEXT_CHARS = 100_000;
+const FEEDBACK_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45_000;
+
+// Usage control: each user may start this many AI feedback requests per window.
+const LIMIT_MAX = Number(process.env.FEEDBACK_RATE_LIMIT_MAX) || 10;
+const LIMIT_WINDOW_MINUTES = Number(process.env.FEEDBACK_RATE_LIMIT_WINDOW_MINUTES) || 60;
+const limiter = createRateLimiter({ max: LIMIT_MAX, windowMs: LIMIT_WINDOW_MINUTES * 60_000 });
 
 const FEEDBACK_SCHEMA = {
   type: 'object',
@@ -136,8 +139,9 @@ router.post('/', (req, res) => {
           return res.status(400).json({ error: 'Your profile resume must be a PDF, DOC, or DOCX file.' });
         }
 
-        const file = resolveProfileResume(resumePath);
-        if (!file) {
+        const uploadsDir = path.resolve('public/uploads');
+        const file = path.resolve('public', resumePath);
+        if (!file.startsWith(uploadsDir + path.sep) || !fs.existsSync(file)) {
           return res.status(400).json({ error: 'Your resume file could not be found. Upload it again.' });
         }
         if (fs.statSync(file).size > MAX_RESUME_BYTES) {
@@ -164,81 +168,29 @@ router.post('/', (req, res) => {
         const posting = typeof req.body?.jobPosting === 'string' ? req.body.jobPosting.trim().slice(0, 8000) : '';
         const userText = posting ? `Job posting:\n${posting}` : 'Job posting: (none provided)';
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents: [{
-              role: 'user',
-              parts: [...resumeParts, { text: userText }]
-            }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              responseJsonSchema: FEEDBACK_SCHEMA,
-              maxOutputTokens: 6000,
-              temperature: 0.3
-            }
-          })
+        // Shared code: one Gemini request with a timeout and typed errors.
+        const feedback = await callGemini({
+          systemPrompt: SYSTEM_PROMPT,
+          parts: [...parts, { text: userText }],
+          schema: FEEDBACK_SCHEMA,
+          model: MODEL,
+          maxOutputTokens: 6000,
+          temperature: 0.3,
+          timeoutMs: FEEDBACK_TIMEOUT_MS
         });
 
-        if (r.status === 429) {
-          return res.status(429).json({ error: 'Free-tier rate limit reached. Wait a minute and try again.' });
+        // Feature-specific check: valid JSON alone is not enough.
+        const result = validateFeedback(feedback, { hasPosting: Boolean(posting) });
+        if (!result.ok) {
+          console.error('Feedback failed validation:', result.errors.join('; '));
+          return res.status(502).json({ error: 'The AI response was incomplete. Please try again.', code: 'INVALID_OUTPUT' });
         }
-        if (r.status === 503) {
-          console.error('Gemini API temporarily unavailable:', r.status, await r.text());
-          return res.status(503).json({ error: 'Gemini is temporarily experiencing high demand. Please wait a moment and try again.' });
-        }
-        if (!r.ok) {
-          console.error('Gemini API error:', r.status, await r.text());
-          return res.status(502).json({ error: 'AI service error. Check the API key and model name.' });
-        }
-
-        const data = await r.json();
-        const candidate = data.candidates?.[0];
-        const text = (candidate?.content?.parts || []).map(p => p.text || '').join('').trim();
-        if (candidate?.finishReason === 'MAX_TOKENS') {
-          console.error('Gemini feedback was truncated at the output token limit.');
-          return res.status(502).json({ error: 'The AI response was cut off. Try again or use a shorter resume.' });
-        }
-        if (!text) {
-          const reason = candidate?.finishReason || data.promptFeedback?.blockReason || 'NO_CONTENT';
-          console.error('Gemini returned no feedback text:', reason);
-          const error = reason === 'MAX_TOKENS'
-            ? 'The AI response was cut short. Try again with a shorter resume.'
-            : 'The AI could not read this resume and return feedback. Try a text-based PDF or Word document.';
-          return res.status(502).json({ error });
-        }
-
-        const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-
-        let feedback;
-        try {
-          feedback = JSON.parse(clean);
-        } catch (parseError) {
-          // Recover if the model wrapped a valid JSON object in brief extra text.
-          const objectStart = clean.indexOf('{');
-          const objectEnd = clean.lastIndexOf('}');
-          if (objectStart >= 0 && objectEnd > objectStart) {
-            try {
-              feedback = JSON.parse(clean.slice(objectStart, objectEnd + 1));
-            } catch {
-              console.error('Gemini feedback JSON parsing failed:', parseError.message, candidate?.finishReason);
-              return res.status(502).json({ error: 'The AI response was incomplete. Please try again.' });
-            }
-          } else {
-            console.error('Gemini feedback did not contain a JSON object:', parseError.message, candidate?.finishReason);
-            return res.status(502).json({ error: 'The AI response was incomplete. Please try again.' });
-          }
-        }
-
-        if (!feedback || typeof feedback !== 'object' || Array.isArray(feedback)) {
-          return res.status(502).json({ error: 'AI returned an unreadable response. Try again.' });
-        }
-        res.json(feedback);
+        res.json(result.value);
       } catch (err) {
-        console.error(err);
+        if (err instanceof AiError) {
+          return res.status(err.status).json({ error: err.message, code: err.code });
+        }
+        console.error('Unexpected feedback error:', err.message);
         res.status(500).json({ error: 'Could not generate feedback.' });
       }
     }
