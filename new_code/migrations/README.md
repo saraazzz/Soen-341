@@ -79,9 +79,9 @@ SOURCE new_code/migrations/004_create_notifications.sql;
 ```
 
 It creates the `notifications` table (storing user-specific notifications for new applications, status updates, interview invitations, and deadline reminders) and safely adds an optional `deadline` column to `jobs`. Existing tables and data are fully preserved.
-## Optional deadlines (005)
+## Optional deadlines (004)
 
-`005_optional_posting_deadlines.sql` adds nullable `jobs.deadline_at` and its index.
+`004_optional_posting_deadlines.sql` adds nullable `jobs.deadline_at` and its index.
 Apply once after 003, before starting the deadline-enabled server. Existing rows
 get NULL (no deadline). This migration has not been applied by the authoring step.
 

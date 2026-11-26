@@ -55,7 +55,11 @@ const handleAvatarUpload = (req, res, next) => {
     });
 };
 const resumeStorage = multer.diskStorage({
-    destination: "public/uploads/",
+    destination: (req, file, cb) => {
+        fs.mkdir(PROFILE_RESUME_DIR, { recursive: true }, (err) => {
+            cb(err, PROFILE_RESUME_DIR);
+        });
+    },
     filename: (req, file, cb) => {
         const originalName = path.basename(file.originalname);
         const extension = path.extname(originalName);
@@ -169,7 +173,6 @@ const PORT = 3000;
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use('/api/resumes', require('./routes/resumes'));
 
 
 app.use(session({
@@ -177,8 +180,18 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
 }));
+app.use('/api/resumes', require('./routes/resumes'));
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/job-matching', require('./routes/job-matching'));
+
+// Block direct public HTTP access to any legacy resume files in public/uploads/
+app.use('/uploads', (req, res, next) => {
+    if (/\.(pdf|docx?)$/i.test(req.path)) {
+        return res.status(403).json({ message: 'Resumes are private. Please use the authorized route.' });
+    }
+    next();
+});
+
 
 // Serve frontend files
 app.use(express.static("public"));
@@ -2323,7 +2336,7 @@ app.post('/api/profile/resume', requireLogin, handleResumeUpload, (req, res) => 
        
 
         // Save new resume path to MySQL
-        const filePath = `uploads/${req.file.filename}`;
+        const filePath = req.file.filename;
         db.query(
             'UPDATE job_seeker_profiles SET resume_path = ? WHERE user_id = ?',
             [filePath, req.session.userId],
