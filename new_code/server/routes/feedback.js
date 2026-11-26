@@ -6,7 +6,11 @@
 
 const express = require('express');
 const router = express.Router();
-const WordExtractor = require('word-extractor');
+const { readResumeParts } = require('../ai/resume-reader');
+const { callGemini } = require('../ai/gemini-client');
+const { validateFeedback } = require('../ai/validate-feedback');
+const { AiError } = require('../ai/errors');
+const { createRateLimiter } = require('../ai/rate-limit');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
