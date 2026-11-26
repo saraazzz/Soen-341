@@ -5,14 +5,16 @@
 // Never put the key in frontend code or commit it to GitHub.
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const router = express.Router();
-const WordExtractor = require('word-extractor');
+const { readResumeParts } = require('../ai/resume-reader');
+const { callGemini } = require('../ai/gemini-client');
+const { validateFeedback } = require('../ai/validate-feedback');
+const { AiError } = require('../ai/errors');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 const MAX_RESUME_TEXT_CHARS = 100_000;
+const FEEDBACK_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45_000;
 
 const FEEDBACK_SCHEMA = {
   type: 'object',
@@ -126,119 +128,38 @@ router.post('/', (req, res) => {
           return res.status(500).json({ error: 'Could not load your resume.' });
         }
 
-        const resumePath = rows[0]?.resume_path;
-        if (!resumePath) {
-          return res.status(400).json({ error: 'Upload a resume to your profile first.' });
-        }
-        const extension = path.extname(resumePath).toLowerCase();
-        if (!['.pdf', '.doc', '.docx'].includes(extension)) {
-          return res.status(400).json({ error: 'Your profile resume must be a PDF, DOC, or DOCX file.' });
-        }
-
-        const uploadsDir = path.resolve('public/uploads');
-        const file = path.resolve('public', resumePath);
-        if (!file.startsWith(uploadsDir + path.sep) || !fs.existsSync(file)) {
-          return res.status(400).json({ error: 'Your resume file could not be found. Upload it again.' });
-        }
-        if (fs.statSync(file).size > MAX_RESUME_BYTES) {
-          return res.status(400).json({ error: 'Resume file is too large (10 MB max).' });
-        }
-
-        const resumeParts = [];
-        if (extension === '.pdf') {
-          const pdfBase64 = fs.readFileSync(file).toString('base64');
-          resumeParts.push({ inlineData: { mimeType: 'application/pdf', data: pdfBase64 } });
-        } else {
-          const document = await new WordExtractor().extract(file);
-          const resumeText = [document.getHeaders(), document.getBody(), document.getFooters()]
-            .filter(Boolean)
-            .join('\n')
-            .slice(0, MAX_RESUME_TEXT_CHARS)
-            .trim();
-          if (!resumeText) {
-            return res.status(400).json({ error: 'Could not read text from this Word resume. Try saving it as DOCX or PDF.' });
-          }
-          resumeParts.push({ text: `Resume text (extracted from ${extension}):\n${resumeText}` });
-        }
+        // Shared code: read the resume (PDF/DOC/DOCX) into Gemini "parts".
+        const { parts } = await readResumeParts(rows[0]?.resume_path, {
+          maxBytes: MAX_RESUME_BYTES,
+          maxTextChars: MAX_RESUME_TEXT_CHARS
+        });
 
         const posting = typeof req.body?.jobPosting === 'string' ? req.body.jobPosting.trim().slice(0, 8000) : '';
         const userText = posting ? `Job posting:\n${posting}` : 'Job posting: (none provided)';
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents: [{
-              role: 'user',
-              parts: [...resumeParts, { text: userText }]
-            }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              responseJsonSchema: FEEDBACK_SCHEMA,
-              maxOutputTokens: 6000,
-              temperature: 0.3
-            }
-          })
+        // Shared code: one Gemini request with a timeout and typed errors.
+        const feedback = await callGemini({
+          systemPrompt: SYSTEM_PROMPT,
+          parts: [...parts, { text: userText }],
+          schema: FEEDBACK_SCHEMA,
+          model: MODEL,
+          maxOutputTokens: 6000,
+          temperature: 0.3,
+          timeoutMs: FEEDBACK_TIMEOUT_MS
         });
 
-        if (r.status === 429) {
-          return res.status(429).json({ error: 'Free-tier rate limit reached. Wait a minute and try again.' });
+        // Feature-specific check: valid JSON alone is not enough.
+        const result = validateFeedback(feedback, { hasPosting: Boolean(posting) });
+        if (!result.ok) {
+          console.error('Feedback failed validation:', result.errors.join('; '));
+          return res.status(502).json({ error: 'The AI response was incomplete. Please try again.', code: 'INVALID_OUTPUT' });
         }
-        if (r.status === 503) {
-          console.error('Gemini API temporarily unavailable:', r.status, await r.text());
-          return res.status(503).json({ error: 'Gemini is temporarily experiencing high demand. Please wait a moment and try again.' });
-        }
-        if (!r.ok) {
-          console.error('Gemini API error:', r.status, await r.text());
-          return res.status(502).json({ error: 'AI service error. Check the API key and model name.' });
-        }
-
-        const data = await r.json();
-        const candidate = data.candidates?.[0];
-        const text = (candidate?.content?.parts || []).map(p => p.text || '').join('').trim();
-        if (candidate?.finishReason === 'MAX_TOKENS') {
-          console.error('Gemini feedback was truncated at the output token limit.');
-          return res.status(502).json({ error: 'The AI response was cut off. Try again or use a shorter resume.' });
-        }
-        if (!text) {
-          const reason = candidate?.finishReason || data.promptFeedback?.blockReason || 'NO_CONTENT';
-          console.error('Gemini returned no feedback text:', reason);
-          const error = reason === 'MAX_TOKENS'
-            ? 'The AI response was cut short. Try again with a shorter resume.'
-            : 'The AI could not read this resume and return feedback. Try a text-based PDF or Word document.';
-          return res.status(502).json({ error });
-        }
-
-        const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-
-        let feedback;
-        try {
-          feedback = JSON.parse(clean);
-        } catch (parseError) {
-          // Recover if the model wrapped a valid JSON object in brief extra text.
-          const objectStart = clean.indexOf('{');
-          const objectEnd = clean.lastIndexOf('}');
-          if (objectStart >= 0 && objectEnd > objectStart) {
-            try {
-              feedback = JSON.parse(clean.slice(objectStart, objectEnd + 1));
-            } catch {
-              console.error('Gemini feedback JSON parsing failed:', parseError.message, candidate?.finishReason);
-              return res.status(502).json({ error: 'The AI response was incomplete. Please try again.' });
-            }
-          } else {
-            console.error('Gemini feedback did not contain a JSON object:', parseError.message, candidate?.finishReason);
-            return res.status(502).json({ error: 'The AI response was incomplete. Please try again.' });
-          }
-        }
-
-        if (!feedback || typeof feedback !== 'object' || Array.isArray(feedback)) {
-          return res.status(502).json({ error: 'AI returned an unreadable response. Try again.' });
-        }
-        res.json(feedback);
+        res.json(result.value);
       } catch (err) {
-        console.error(err);
+        if (err instanceof AiError) {
+          return res.status(err.status).json({ error: err.message, code: err.code });
+        }
+        console.error('Unexpected feedback error:', err.message);
         res.status(500).json({ error: 'Could not generate feedback.' });
       }
     }
