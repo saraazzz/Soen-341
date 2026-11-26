@@ -10,11 +10,17 @@ const { readResumeParts } = require('../ai/resume-reader');
 const { callGemini } = require('../ai/gemini-client');
 const { validateFeedback } = require('../ai/validate-feedback');
 const { AiError } = require('../ai/errors');
+const { createRateLimiter } = require('../ai/rate-limit');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 const MAX_RESUME_TEXT_CHARS = 100_000;
 const FEEDBACK_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45_000;
+
+// Usage control: each user may start this many AI feedback requests per window.
+const LIMIT_MAX = Number(process.env.FEEDBACK_RATE_LIMIT_MAX) || 10;
+const LIMIT_WINDOW_MINUTES = Number(process.env.FEEDBACK_RATE_LIMIT_WINDOW_MINUTES) || 60;
+const limiter = createRateLimiter({ max: LIMIT_MAX, windowMs: LIMIT_WINDOW_MINUTES * 60_000 });
 
 const FEEDBACK_SCHEMA = {
   type: 'object',
@@ -133,6 +139,19 @@ router.post('/', (req, res) => {
           maxBytes: MAX_RESUME_BYTES,
           maxTextChars: MAX_RESUME_TEXT_CHARS
         });
+
+        // Usage control: counted only when a request is really about to go to Gemini
+        // (a missing or unreadable resume does not use up the user's allowance).
+        const slot = limiter.take(req.session.userId);
+        res.set('X-RateLimit-Remaining', String(slot.remaining));
+        if (!slot.allowed) {
+          const minutes = Math.ceil(slot.retryAfterSec / 60);
+          res.set('Retry-After', String(slot.retryAfterSec));
+          return res.status(429).json({
+            error: `You have reached the limit of ${LIMIT_MAX} feedback requests per ${LIMIT_WINDOW_MINUTES} minutes. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+            code: 'USER_LIMIT'
+          });
+        }
 
         const posting = typeof req.body?.jobPosting === 'string' ? req.body.jobPosting.trim().slice(0, 8000) : '';
         const userText = posting ? `Job posting:\n${posting}` : 'Job posting: (none provided)';
