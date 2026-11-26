@@ -45,6 +45,12 @@ For future table changes, follow the
 [migration workflow](new_code/migrations/README.md).
 Do not rerun `database.sql` on an existing database: it deletes project data.
 
+For Sprint 4, follow the [deployment guide](new_code/DEPLOYMENT.md) and
+[release checklist](new_code/RELEASE_CHECKLIST.md). Hosting and durable upload
+storage still need configuration; the checklist distinguishes tested code from
+pending hosted verification. For the proposed Vercel/TiDB/R2 stack, see
+[platform setup](new_code/VERCEL_SETUP.md) and the [team handoff](new_code/SPRINT4_HANDOFF.md).
+
 ## Proposed Features
 - User registration, authentication, and profile management
 - Resume upload and management

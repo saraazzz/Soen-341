@@ -35,8 +35,8 @@ USE recruiting_website;
 SHOW TABLES;
 ```
 
-Expect six tables: `users`, `employer_profiles`, `job_seeker_profiles`,
-`job_seeker_skills`, `jobs`, and `applications`.
+Expect seven tables: `users`, `employer_profiles`, `job_seeker_profiles`,
+`job_seeker_skills`, `job_seeker_match_profile`, `jobs`, and `applications`.
 Apply any numbered migrations as described in [migrations/README.md](migrations/README.md),
 then exit MySQL with `exit;`.
 
