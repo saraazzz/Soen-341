@@ -4,10 +4,12 @@ const { databaseOptions } = require('./database-options');
 const pool = mysql.createPool({
   ...databaseOptions(),
   waitForConnections: true,
-  connectionLimit: 10
+  connectionLimit: process.env.VERCEL === '1' ? 2 : 10,
+  ...(process.env.VERCEL === '1' ? { maxIdle: 0, idleTimeout: 1000 } : {})
 });
 
-pool.query(`
+// Hosted schema is applied explicitly before deployment, never on a cold start.
+if (process.env.VERCEL !== '1') pool.query(`
   CREATE TABLE IF NOT EXISTS resumes (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(255),

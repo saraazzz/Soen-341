@@ -1,3 +1,5 @@
+const { isCloudFile } = require('../cloud-files');
+const { readCloudResumeParts } = require('../cloud-resume-reader');
 // POST /api/job-matching
 // Asks Gemini to write job recommendations from the seeker's skills, experience,
 // education, and preferences, using the same generateContent contract as resume feedback.
@@ -61,6 +63,7 @@ function profileFromRow(row, skills) {
 
 async function loadResumeParts(resumePath) {
     if (!resumePath) return { parts: [], usedResume: false };
+    if (isCloudFile(resumePath)) return { parts: await readCloudResumeParts(resumePath, 8000), usedResume: true };
     const extension = path.extname(resumePath).toLowerCase();
     if (![".pdf", ".doc", ".docx"].includes(extension)) return { parts: [], usedResume: false };
 

@@ -106,7 +106,7 @@ if (!response.ok) {
             resumeIframe.src = "/api/profile/resume/preview";
         } else {
             resumeIframe.removeAttribute("sandbox");
-            resumeIframe.src = profile.resume_path;
+            resumeIframe.src = profile.resume_path.startsWith('r2/') ? '/api/profile/resume' : profile.resume_path;
         }
         resumePreview.removeAttribute("hidden");
         resumeBox.setAttribute("hidden", "hidden");
@@ -254,6 +254,8 @@ if (saveResumeBtn && resumeFileInput) {
         const file = resumeFileInput.files[0];
         if (!file) return alert("Please select a file first.");
 
+        const settings = await (window.storageSettings || Promise.resolve({ maxUploadBytes: 10 * 1024 * 1024 }));
+        if (file.size > settings.maxUploadBytes) { alert(`Choose a file no larger than ${settings.maxUploadBytes / 1024 / 1024} MB.`); return; }
         const formData = new FormData();
         formData.append("resume", file);
 
@@ -358,6 +360,8 @@ deleteAvatarBtn?.addEventListener('click', async () => {
 if (userFile) {
     userFile.addEventListener('change', async function () {
         if (!this.files[0]) return;
+        const settings = await (window.storageSettings || Promise.resolve({ maxUploadBytes: 10 * 1024 * 1024 }));
+        if (this.files[0].size > settings.maxUploadBytes) { alert(`Choose an image no larger than ${settings.maxUploadBytes / 1024 / 1024} MB.`); return; }
 
         const formData = new FormData();
         formData.append('avatar', this.files[0]);

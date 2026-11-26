@@ -1,3 +1,5 @@
+const { isCloudFile } = require('../cloud-files');
+const { readCloudResumeParts } = require('../cloud-resume-reader');
 // routes/feedback.js (Gemini, reads the logged-in user's profile resume)
 // POST /api/feedback  body: { jobPosting?: "text" }
 // Needs: Node 18+, GEMINI_API_KEY in .env, and in server.js right after the db connection is created:
@@ -135,6 +137,10 @@ router.post('/', (req, res) => {
           return res.status(400).json({ error: 'Your profile resume must be a PDF, DOC, or DOCX file.' });
         }
 
+        let resumeParts;
+        if (isCloudFile(resumePath)) {
+          resumeParts = await readCloudResumeParts(resumePath, MAX_RESUME_TEXT_CHARS);
+        } else {
         const uploadsDir = path.resolve('public/uploads');
         const file = path.resolve('public', resumePath);
         if (!file.startsWith(uploadsDir + path.sep) || !fs.existsSync(file)) {
@@ -144,7 +150,7 @@ router.post('/', (req, res) => {
           return res.status(400).json({ error: 'Resume file is too large (10 MB max).' });
         }
 
-        const resumeParts = [];
+        resumeParts = [];
         if (extension === '.pdf') {
           const pdfBase64 = fs.readFileSync(file).toString('base64');
           resumeParts.push({ inlineData: { mimeType: 'application/pdf', data: pdfBase64 } });
@@ -161,6 +167,7 @@ router.post('/', (req, res) => {
           resumeParts.push({ text: `Resume text (extracted from ${extension}):\n${resumeText}` });
         }
 
+        }
         const posting = typeof req.body?.jobPosting === 'string' ? req.body.jobPosting.trim().slice(0, 8000) : '';
         const userText = posting ? `Job posting:\n${posting}` : 'Job posting: (none provided)';
 

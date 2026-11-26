@@ -214,6 +214,7 @@ retryJob.addEventListener("click", loadApplyPage);
 let applicationSubmitting = false;
 applyForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const settings = await (window.storageSettings || Promise.resolve({ maxUploadBytes: 10 * 1024 * 1024 }));
     if (applicationSubmitting || applyForm.hidden || !applyForm.reportValidity()) return;
 
     // Determine resume choice
@@ -242,8 +243,8 @@ applyForm.addEventListener("submit", async (event) => {
             showApplyError("Only PDF, DOC, or DOCX files are accepted.");
             return;
         }
-        if (file.size > 10 * 1024 * 1024) {
-            showApplyError("Resume files must be 10 MB or smaller.");
+        if (file.size > settings.maxUploadBytes) {
+            showApplyError(`Resume files must be ${settings.maxUploadBytes / 1024 / 1024} MB or smaller.`);
             return;
         }
     }
@@ -254,8 +255,8 @@ applyForm.addEventListener("submit", async (event) => {
             showApplyError("Additional documents must be PDF, DOC, or DOCX files.");
             return;
         }
-        if (file.size > 10 * 1024 * 1024) {
-            showApplyError("Additional documents must be 10 MB or smaller.");
+        if (file.size > settings.maxUploadBytes) {
+            showApplyError(`Additional documents must be ${settings.maxUploadBytes / 1024 / 1024} MB or smaller.`);
             return;
         }
     }

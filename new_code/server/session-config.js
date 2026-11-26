@@ -7,11 +7,15 @@ function createSessionResources(config) {
     if (config.sessionStore === "mysql") {
         const mysql = require("mysql2/promise");
         const MySQLStore = require("express-mysql-session")(session);
-        connection = mysql.createPool({ ...databaseOptions(), connectionLimit: 2 });
+        connection = mysql.createPool({ ...databaseOptions(), connectionLimit: 2,
+            ...(process.env.VERCEL === "1" ? { maxIdle: 0, idleTimeout: 1000 } : {}) });
         store = new MySQLStore({
             // Deployment applies deployment/sessions.sql explicitly. The app
             // must not silently change a teammate's database schema at login.
             createDatabaseTable: false,
+            // Vercel can suspend the process between requests. Its authenticated
+            // daily maintenance route performs cleanup instead of a timer.
+            clearExpired: process.env.VERCEL !== "1",
             endConnectionOnClose: true,
             expiration: config.cookie.maxAge
         }, connection);

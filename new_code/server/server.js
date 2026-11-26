@@ -9,7 +9,9 @@ const bcrypt = require("bcrypt");
 const { readRuntimeConfig } = require("./runtime-config");
 const { databaseOptions } = require("./database-options");
 const { createSessionResources, establishSession } = require("./session-config");
+const { createMaintenanceHandler } = require("./maintenance");
 
+const { enabled: cloudEnabled, isCloudFile, cloudFiles, UPLOAD_BYTES } = require("./cloud-files");
 const multer = require("multer");
 const mammoth = require("mammoth");
 const WordExtractor = require("word-extractor");
@@ -46,18 +48,20 @@ const applicationUploadStorage = multer.diskStorage({
     }
 });
 const applicationUpload = multer({
-    storage: applicationUploadStorage,
-    limits: { fileSize: 10 * 1024 * 1024 }
+    storage: cloudEnabled() ? multer.memoryStorage() : applicationUploadStorage,
+    limits: { fileSize: cloudEnabled() ? UPLOAD_BYTES : 10 * 1024 * 1024, files: 2, fields: 30, fieldSize: 16000 }
 }).fields([
     { name: "resume", maxCount: 1 },
     { name: "coverLetter", maxCount: 1 }
 ]);
 const handleApplicationUploads = (req, res, next) => {
+    if (!req.session?.userId) return res.status(401).json({ message: "Not logged in." });
+    if (req.session.role !== "job_seeker") return res.status(403).json({ message: "Only job seekers can apply for jobs." });
     applicationUpload(req, res, (error) => {
         if (error) {
             console.error("Application document upload error:", error);
             const message = error.code === "LIMIT_FILE_SIZE"
-                ? "Each application document must be 10 MB or smaller."
+                ? `Each application document must be ${cloudEnabled() ? 1.5 : 10} MB or smaller.`
                 : error instanceof multer.MulterError
                     ? "The application documents could not be uploaded."
                     : "Could not process application documents.";
@@ -104,6 +108,7 @@ const app = express();
 const runtime = readRuntimeConfig();
 const PORT = runtime.port;
 const sessionResources = createSessionResources(runtime);
+app.locals.prepareSessionStore = () => sessionResources.ready();
 app.set("trust proxy", runtime.trustProxy);
 
 // Liveness does not need a database or an authenticated session.
@@ -114,6 +119,11 @@ app.get("/health/ready", (req, res) => {
         res.status(error ? 503 : 200).json({ status: error ? "unavailable" : "ready" });
     });
 });
+// The scheduler authenticates with its own secret, without creating a session.
+app.get("/api/internal/maintenance", (req, res) => createMaintenanceHandler(db, {
+    secret: process.env.CRON_SECRET,
+    mysqlSessions: runtime.sessionStore === "mysql"
+})(req, res));
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -122,6 +132,8 @@ app.use('/api/resumes', require('./routes/resumes'));
 
 
 app.use(sessionResources.middleware);
+app.use("/api", require("./routes/cloud-profile"));
+app.get("/api/storage/config", (req, res) => res.json({ maxUploadBytes: cloudEnabled() ? UPLOAD_BYTES : 10 * 1024 * 1024 }));
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/job-matching', require('./routes/job-matching'));
 
@@ -130,7 +142,11 @@ app.use(express.static("public"));
 
 
  // MySQL connection
-const db = mysql.createConnection(databaseOptions());
+// A function instance can process concurrent requests and outlive an idle
+// database connection. A small pool replaces closed connections on Vercel.
+const db = process.env.VERCEL === "1"
+    ? mysql.createPool({ ...databaseOptions(), connectionLimit: 2, maxIdle: 0, idleTimeout: 1000 })
+    : mysql.createConnection(databaseOptions());
 
 app.set("db", db);
 
@@ -1367,38 +1383,40 @@ app.get("/api/jobs/:id", (req, res) => {
     });
 });
 
-app.post("/api/applications", handleApplicationUploads, (req, res) => {
+app.post("/api/applications", handleApplicationUploads, async (req, res) => {
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const uploadedResume = req.files?.resume?.[0];
     const uploadedCoverLetter = req.files?.coverLetter?.[0];
     let unattachedFiles = [uploadedResume?.path, uploadedCoverLetter?.path].filter(Boolean);
     let unattachedPrivateFiles = [];
-    const discardUnattachedFiles = () => {
+    const discardUnattachedFiles = async () => {
         unattachedFiles.forEach((filePath) => {
             fs.unlink(filePath, (error) => {
                 if (error) console.error("Could not remove unused application document:", error);
             });
         });
         unattachedFiles = [];
-        unattachedPrivateFiles.forEach((fileName) => {
+        await Promise.all(unattachedPrivateFiles.map(async (fileName) => {
             try {
-                removeStoredResume(fileName, APPLICATION_RESUME_DIR);
+                if (isCloudFile(fileName)) {
+                    await cloudFiles().remove(fileName).catch(() => console.error("Unused cloud attachment needs cleanup."));
+                } else removeStoredResume(fileName, APPLICATION_RESUME_DIR);
             } catch (error) {
                 console.error("Could not remove unused private application document:", error);
             }
-        });
+        }));
         unattachedPrivateFiles = [];
     };
 
     if (!req.session.userId) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(401).json({
             message: "Not logged in."
         });
     }
 
     if (req.session.role !== "job_seeker") {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(403).json({
             message: "Only job seekers can apply for jobs."
         });
@@ -1441,7 +1459,7 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
 
     for (const [field, value] of Object.entries(applicationFields)) {
         if (typeof value !== "string" || value.trim().length > fieldLimits[field]) {
-            discardUnattachedFiles();
+            await discardUnattachedFiles();
             return res.status(400).json({ message: `Please check the ${field} field.` });
         }
         applicationFields[field] = value.trim();
@@ -1449,7 +1467,7 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
 
     if (!applicationFields.firstName || !applicationFields.lastName
         || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(applicationFields.email)) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({
             message: "First name, last name, and a valid email address are required."
         });
@@ -1457,7 +1475,7 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
     if (applicationFields.workAuthorization
         && !["authorized_no_sponsorship", "authorized_sponsorship", "not_authorized"]
             .includes(applicationFields.workAuthorization)) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({ message: "Choose a valid work authorization option." });
     }
 
@@ -1467,11 +1485,11 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
             try {
                 url = new URL(applicationFields[field]);
             } catch {
-                discardUnattachedFiles();
+                await discardUnattachedFiles();
                 return res.status(400).json({ message: `Enter a valid ${field === "linkedinUrl" ? "LinkedIn" : "portfolio"} URL.` });
             }
             if (!["http:", "https:"].includes(url.protocol)) {
-                discardUnattachedFiles();
+                await discardUnattachedFiles();
                 return res.status(400).json({ message: "Professional links must use HTTP or HTTPS." });
             }
         }
@@ -1482,7 +1500,7 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(applicationFields.availabilityDate)
             || Number.isNaN(parsedDate.getTime())
             || parsedDate.toISOString().slice(0, 10) !== applicationFields.availabilityDate) {
-            discardUnattachedFiles();
+            await discardUnattachedFiles();
             return res.status(400).json({ message: "Enter a valid earliest start date." });
         }
     }
@@ -1494,21 +1512,21 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
         || (hasSalaryMin && (!salaryPattern.test(applicationFields.salaryMin)
             || !salaryPattern.test(applicationFields.salaryMax)
             || Number(applicationFields.salaryMin) > Number(applicationFields.salaryMax)))) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({
             message: "Enter a valid salary range with a minimum no greater than the maximum."
         });
     }
 
     if (!Number.isInteger(jobId) || jobId <= 0) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({
             message: "A valid job is required."
         });
     }
 
     if (coverNote.length > 2000) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({
             message: "The note must be 2000 characters or fewer."
         });
@@ -1516,24 +1534,24 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
 
     const resumeChoice = body.resumeChoice || "profile";
     if (!["profile", "upload"].includes(resumeChoice)) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({ message: "Choose a valid resume option." });
     }
     if (resumeChoice === "upload") {
         const extension = uploadedResume && path.extname(uploadedResume.originalname).toLowerCase();
         if (!uploadedResume || ![".pdf", ".doc", ".docx"].includes(extension)) {
-            discardUnattachedFiles();
+            await discardUnattachedFiles();
             return res.status(400).json({ message: "Please upload a PDF, DOC, or DOCX resume." });
         }
     } else if (uploadedResume) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({
             message: "An uploaded file does not match the selected resume option."
         });
     }
     if (uploadedCoverLetter
         && ![".pdf", ".doc", ".docx"].includes(path.extname(uploadedCoverLetter.originalname).toLowerCase())) {
-        discardUnattachedFiles();
+        await discardUnattachedFiles();
         return res.status(400).json({ message: "Additional documents must be PDF, DOC, or DOCX files." });
     }
 
@@ -1546,17 +1564,17 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
     WHERE id = ?
 `;
 
-    db.query(jobSql, [jobId], (jobError, jobs) => {
+    db.query(jobSql, [jobId], async (jobError, jobs) => {
         if (jobError) {
             console.error("Job lookup error:", jobError);
-            discardUnattachedFiles();
+            await discardUnattachedFiles();
             return res.status(500).json({
                 message: "Could not submit application."
             });
         }
 
         if (jobs.length === 0) {
-            discardUnattachedFiles();
+            await discardUnattachedFiles();
             return res.status(404).json({
                 message: "That job posting could not be found."
             });
@@ -1608,9 +1626,9 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                     snapshot.originalName,
                     jobId
                 ],
-                (insertError, result) => {
+                async (insertError, result) => {
                     if (insertError) {
-                        discardUnattachedFiles();
+                        await discardUnattachedFiles();
                         if (insertError.code === "ER_DUP_ENTRY") {
                             return res.status(409).json({
                                 message: "You have already applied to this job."
@@ -1624,7 +1642,7 @@ app.post("/api/applications", handleApplicationUploads, (req, res) => {
                     }
 
                     if (!result.affectedRows) {
-                        discardUnattachedFiles();
+                        await discardUnattachedFiles();
                         return res.status(409).json({
                             code: "POSTING_UNAVAILABLE",
                             message: "This posting is no longer available for applications."
@@ -1658,7 +1676,7 @@ createNotification(db, {
         };
 
         if (jobs[0].archived_at || jobs[0].deadline_passed) {
-            discardUnattachedFiles();
+            await discardUnattachedFiles();
             return res.status(409).json({
                 code: "POSTING_UNAVAILABLE",
                 message: "This posting is archived or its deadline has passed and no longer accepts applications."
@@ -1668,7 +1686,7 @@ createNotification(db, {
         let coverLetterPath = null;
         if (uploadedCoverLetter) {
             try {
-                const storedCoverLetter = storeUploadedFile({
+                const storedCoverLetter = cloudEnabled() ? { file: await cloudFiles().put(uploadedCoverLetter.buffer, uploadedCoverLetter.originalname, "applications"), originalName: uploadedCoverLetter.originalname } : storeUploadedFile({
                     sourcePath: uploadedCoverLetter.path,
                     destinationRoot: APPLICATION_RESUME_DIR,
                     originalName: uploadedCoverLetter.originalname
@@ -1678,7 +1696,7 @@ createNotification(db, {
                 unattachedFiles = unattachedFiles.filter((filePath) => filePath !== uploadedCoverLetter.path);
             } catch (storageError) {
                 console.error("Additional document storage error:", storageError);
-                discardUnattachedFiles();
+                await discardUnattachedFiles();
                 return res.status(500).json({
                     message: "Could not attach the additional document."
                 });
@@ -1688,14 +1706,14 @@ createNotification(db, {
         if (resumeChoice === "upload") {
             let snapshot;
             try {
-                snapshot = storeUploadedFile({
+                snapshot = cloudEnabled() ? { file: await cloudFiles().put(uploadedResume.buffer, uploadedResume.originalname, "applications"), originalName: uploadedResume.originalname } : storeUploadedFile({
                     sourcePath: uploadedResume.path,
                     destinationRoot: APPLICATION_RESUME_DIR,
                     originalName: uploadedResume.originalname
                 });
             } catch (snapshotError) {
                 console.error("Uploaded resume storage error:", snapshotError);
-                discardUnattachedFiles();
+                await discardUnattachedFiles();
                 return res.status(500).json({
                     message: "Could not attach your resume."
                 });
@@ -1708,10 +1726,11 @@ createNotification(db, {
         db.query(
             "SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?",
             [req.session.userId],
-            (resumeError, profiles) => {
+            async (resumeError, profiles) => {
 
                 if (resumeError) {
                     console.error("Resume lookup error:", resumeError);
+                    await discardUnattachedFiles();
 
                     return res.status(500).json({
                         message: "Could not submit application."
@@ -1721,21 +1740,23 @@ createNotification(db, {
                 let snapshot;
 
                 try {
-                    snapshot = snapshotProfileResume({
+                    const reference = profiles[0]?.resume_path;
+                    snapshot = isCloudFile(reference) ? await cloudFiles().snapshot(reference)
+                        : cloudEnabled() && reference ? { missing: true } : snapshotProfileResume({
                         sourceRelativePath: profiles[0] && profiles[0].resume_path,
                         sourceRoot: PUBLIC_DIR,
                         destinationRoot: APPLICATION_RESUME_DIR
                     });
                 } catch (snapshotError) {
                     console.error("Resume snapshot error:", snapshotError);
-                    discardUnattachedFiles();
+                    await discardUnattachedFiles();
                     return res.status(500).json({
                         message: "Could not submit application."
                     });
                 }
 
                 if (snapshot.missing) {
-                    discardUnattachedFiles();
+                    await discardUnattachedFiles();
                     return res.status(400).json({
                         message: "Your profile resume could not be found. Upload it again or choose a file."
                     });
@@ -1855,8 +1876,17 @@ app.get("/api/applications/:id", (req, res) => {
     );
 });
 
+// Only call after checking application ownership. Client-supplied keys are never used.
+async function sendCloudDocument(res, reference, name) {
+    if (!reference.startsWith('r2/applications/')) return res.sendStatus(404);
+    try {
+        res.set('Cache-Control', 'private, no-store');
+        return res.redirect(await cloudFiles().url(reference, name));
+    } catch { return res.status(503).json({ message: 'Could not open that document. Please try again.' }); }
+}
+
 function sendSubmittedResume(req, res, sql, params, audience) {
-    db.query(sql, params, (error, results) => {
+    db.query(sql, params, async (error, results) => {
 
         if (error) {
             console.error("Submitted resume lookup error:", error);
@@ -1875,6 +1905,7 @@ function sendSubmittedResume(req, res, sql, params, audience) {
             });
         }
 
+        if (isCloudFile(row.submitted_resume_file)) return sendCloudDocument(res, row.submitted_resume_file, row.submitted_resume_original_name);
         const filePath = resolveStoredResume(row.submitted_resume_file, APPLICATION_RESUME_DIR);
 
         if (!filePath) {
@@ -1884,7 +1915,11 @@ function sendSubmittedResume(req, res, sql, params, audience) {
         }
 
         res.set("Cache-Control", "private, no-store");
-        res.download(filePath, row.submitted_resume_original_name || "resume");
+        // The resolver already validated this file. Anchor downloads to its
+        // directory so a hidden parent checkout folder is not treated as a file.
+        res.download(path.basename(filePath), row.submitted_resume_original_name || "resume", {
+            root: path.dirname(filePath)
+        });
     });
 }
 
@@ -2007,6 +2042,7 @@ app.get("/api/employer/applications/:id/additional-document", (req, res) => {
                 });
             }
 
+            if (isCloudFile(row.cover_letter_path)) return sendCloudDocument(res, row.cover_letter_path);
             const filePath = resolveStoredApplicationDocument(
                 row.cover_letter_path,
                 APPLICATION_RESUME_DIR,
@@ -2022,7 +2058,7 @@ app.get("/api/employer/applications/:id/additional-document", (req, res) => {
                 .replace(/^\d+-[0-9a-f]{16}-/i, "")
                 .replace(/^\d+-/, "") || "additional-document";
             res.set("Cache-Control", "private, no-store");
-            res.download(filePath, fileName);
+            res.download(path.basename(filePath), fileName, { root: path.dirname(filePath) });
         }
     );
 });
@@ -2386,7 +2422,7 @@ function ensureSchema(database, done) {
 }
 
 // Start connections/listening only in the real app, not when API tests import it.
-if (require.main === module) {
+if (require.main === module && process.env.VERCEL !== "1") {
     const { pool: resumePool } = require("./db");
     async function closeConnections() {
         await Promise.allSettled([
