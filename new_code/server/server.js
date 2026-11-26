@@ -134,7 +134,8 @@ const {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
     PROFILE_RESUME_DIR,
-    resolveProfileResume, 
+    resolveProfileResume,
+    migrateLegacyProfileResumes,   
     snapshotProfileResume,
     storeUploadedFile,
     resolveStoredResume,
@@ -143,6 +144,7 @@ const {
     unlinkPublicUpload,
     unlinkProfileResume
 } = require("./application-resumes");
+migrateLegacyProfileResumes();
 const {
     authorizeSeeker,
     authorizeEmployer,
@@ -184,9 +186,15 @@ app.use('/api/resumes', require('./routes/resumes'));
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/job-matching', require('./routes/job-matching'));
 
-// Block direct public HTTP access to any legacy resume files in public/uploads/
+// Block direct public HTTP access to any legacy resume files in public/uploads/ (including URL-encoded)
 app.use('/uploads', (req, res, next) => {
-    if (/\.(pdf|docx?)$/i.test(req.path)) {
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(req.path);
+    } catch {
+        return res.status(400).json({ message: 'Invalid path.' });
+    }
+    if (/\.(pdf|docx?)$/i.test(decodedPath)) {
         return res.status(403).json({ message: 'Resumes are private. Please use the authorized route.' });
     }
     next();

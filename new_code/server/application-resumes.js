@@ -145,11 +145,17 @@ function resolveStoredApplicationDocument(storedName, privateRoot, publicRoot) {
     const uploadsRoot = path.join(publicRoot, "uploads");
     const resolved = resolveInside(uploadsRoot, storedName.slice(legacyPrefix.length));
 
-    if (!resolved || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-        return null;
-    }
+   if (!resolved) {
+    return null;
+}
 
+if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
     return resolved;
+}
+
+// The startup migration moves legacy documents here while the database
+// continues to store paths such as "uploads/letter.pdf".
+return resolveStoredResume(path.basename(storedName), PROFILE_RESUME_DIR);
 }
 
 function removeStoredResume(storedName, destinationRoot) {
@@ -177,11 +183,35 @@ function unlinkProfileResume(storedPath) {
     }
 }
 
+function migrateLegacyProfileResumes(publicRoot = PUBLIC_DIR, privateRoot = PROFILE_RESUME_DIR) {
+    const legacyDir = path.join(publicRoot, "uploads");
+    if (!fs.existsSync(legacyDir)) {
+        return;
+    }
+
+    const entries = fs.readdirSync(legacyDir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (!/\.(pdf|docx?)$/i.test(entry.name)) continue;
+
+        fs.mkdirSync(privateRoot, { recursive: true });
+        const src = path.join(legacyDir, entry.name);
+        const dest = path.join(privateRoot, entry.name);
+
+        if (!fs.existsSync(dest)) {
+            fs.renameSync(src, dest);
+        } else {
+    fs.unlinkSync(src);
+        }
+    }
+}
+
 module.exports = {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
     PROFILE_RESUME_DIR,
     resolveProfileResume, 
+    migrateLegacyProfileResumes,
     snapshotProfileResume,
     storeUploadedFile,
     resolveStoredResume,

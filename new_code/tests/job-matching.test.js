@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const request = require("supertest");
 const bcrypt = require("bcrypt");
+const { PROFILE_RESUME_DIR } = require("../server/application-resumes");
 
 jest.mock("mysql2", () => ({
     createConnection: jest.fn(() => ({
@@ -25,6 +26,7 @@ const {
 
 const RESUME_DIR = path.resolve("public/uploads");
 const RESUME_PATH = path.join(RESUME_DIR, "job-match-test.pdf");
+const PRIVATE_RESUME_PATH = path.join(PROFILE_RESUME_DIR, "job-match-private-test.pdf");
 let password;
 
 const openJob = {
@@ -134,6 +136,7 @@ beforeEach(() => {
 
 afterEach(() => {
     if (fs.existsSync(RESUME_PATH)) fs.unlinkSync(RESUME_PATH);
+    if (fs.existsSync(PRIVATE_RESUME_PATH)) fs.unlinkSync(PRIVATE_RESUME_PATH);
 });
 
 afterAll(() => {
@@ -332,6 +335,26 @@ test("a saved resume is sent to Gemini with the recommendation request", async (
     expect(response.body.usedResume).toBe(true);
     expect(promptText().parts.some((part) => part.inlineData?.mimeType === "application/pdf")).toBe(true);
 });
+test("a private saved resume is sent to Gemini with the recommendation request", async () => {
+    fs.mkdirSync(PROFILE_RESUME_DIR, { recursive: true });
+    fs.writeFileSync(PRIVATE_RESUME_PATH, "fake private pdf");
+
+    const agent = await login();
+    db.query.mockClear();
+    installMatchingDb({
+        profile: { ...profileRow, resume_path: "job-match-private-test.pdf" }
+    });
+    geminiResponse(validPayload());
+
+    const response = await agent.post("/api/job-matching").send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.usedResume).toBe(true);
+    expect(promptText().parts.some(
+        (part) => part.inlineData?.mimeType === "application/pdf"
+    )).toBe(true);
+});
+
 
 test("an invented job id from the model is not returned", async () => {
     const agent = await login();

@@ -134,39 +134,23 @@ router.post('/', (req, res) => {
           return res.status(500).json({ error: 'Could not load your resume.' });
         }
 
-        const resumePath = rows[0]?.resume_path;
-        if (!resumePath) {
-          return res.status(400).json({ error: 'Upload a resume to your profile first.' });
-        }
-        const extension = path.extname(resumePath).toLowerCase();
-        if (!['.pdf', '.doc', '.docx'].includes(extension)) {
-          return res.status(400).json({ error: 'Your profile resume must be a PDF, DOC, or DOCX file.' });
-        }
+        // Shared code: read the resume (PDF/DOC/DOCX) into Gemini "parts".
+        const { parts } = await readResumeParts(rows[0]?.resume_path, {
+          maxBytes: MAX_RESUME_BYTES,
+          maxTextChars: MAX_RESUME_TEXT_CHARS
+        });
 
-        const uploadsDir = path.resolve('public/uploads');
-        const file = path.resolve('public', resumePath);
-        if (!file.startsWith(uploadsDir + path.sep) || !fs.existsSync(file)) {
-          return res.status(400).json({ error: 'Your resume file could not be found. Upload it again.' });
-        }
-        if (fs.statSync(file).size > MAX_RESUME_BYTES) {
-          return res.status(400).json({ error: 'Resume file is too large (10 MB max).' });
-        }
-
-        const resumeParts = [];
-        if (extension === '.pdf') {
-          const pdfBase64 = fs.readFileSync(file).toString('base64');
-          resumeParts.push({ inlineData: { mimeType: 'application/pdf', data: pdfBase64 } });
-        } else {
-          const document = await new WordExtractor().extract(file);
-          const resumeText = [document.getHeaders(), document.getBody(), document.getFooters()]
-            .filter(Boolean)
-            .join('\n')
-            .slice(0, MAX_RESUME_TEXT_CHARS)
-            .trim();
-          if (!resumeText) {
-            return res.status(400).json({ error: 'Could not read text from this Word resume. Try saving it as DOCX or PDF.' });
-          }
-          resumeParts.push({ text: `Resume text (extracted from ${extension}):\n${resumeText}` });
+        // Usage control: counted only when a request is really about to go to Gemini
+        // (a missing or unreadable resume does not use up the user's allowance).
+        const slot = limiter.take(req.session.userId);
+        res.set('X-RateLimit-Remaining', String(slot.remaining));
+        if (!slot.allowed) {
+          const minutes = Math.ceil(slot.retryAfterSec / 60);
+          res.set('Retry-After', String(slot.retryAfterSec));
+          return res.status(429).json({
+            error: `You have reached the limit of ${LIMIT_MAX} feedback requests per ${LIMIT_WINDOW_MINUTES} minutes. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+            code: 'USER_LIMIT'
+          });
         }
 
         const posting = typeof req.body?.jobPosting === 'string' ? req.body.jobPosting.trim().slice(0, 8000) : '';
