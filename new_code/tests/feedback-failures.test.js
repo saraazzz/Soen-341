@@ -1,4 +1,5 @@
 // Route-level failure and validation tests for POST /api/feedback (Gemini is mocked).
+process.env.FEEDBACK_RATE_LIMIT_MAX = '1000'; // these tests send many requests as one user
 const fs = require('fs');
 const path = require('path');
 const request = require('supertest');
