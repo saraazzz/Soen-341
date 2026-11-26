@@ -1,0 +1,175 @@
+.job-matches-page {
+    color: #0f1724;
+    background: #ffffff;
+}
+
+.job-matches-page .match-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto 16px;
+    padding: 14px 16px;
+    background: #f8f5fb;
+    border: 1px solid #eadff5;
+    border-left: 4px solid #7222ac;
+    border-radius: 12px;
+    color: #334155;
+    line-height: 1.55;
+    box-shadow: 0 2px 8px rgba(114, 34, 172, 0.06);
+}
+
+.job-matches-page .match-callout i {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: #7222ac;
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.job-matches-page .match-callout span {
+    min-width: 0;
+}
+
+.job-matches-page .match-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 auto 12px;
+    padding: 0;
+}
+
+.job-matches-page .match-form label {
+    margin-top: 8px;
+    font-weight: 700;
+}
+
+.job-matches-page .match-form input,
+.job-matches-page .match-form select,
+.job-matches-page .match-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d6d3d1;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font: inherit;
+}
+
+.job-matches-page .match-form textarea {
+    min-height: 90px;
+    resize: vertical;
+}
+
+.job-matches-page .match-form button,
+.job-matches-page #retry-matches {
+    align-self: flex-start;
+    margin-top: 12px;
+}
+
+.job-matches-page .match-form a,
+.job-matches-page .match-card a {
+    color: #7222ac;
+    font-weight: 700;
+}
+
+.job-matches-page .match-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.job-matches-page .match-skill {
+    background: #f5effa;
+    color: #5b1b8a;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.9rem;
+}
+
+.job-matches-page .match-results {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin: 0 auto 32px;
+    padding: 0;
+}
+
+.job-matches-page .match-results .match-callout {
+    margin: 0;
+}
+
+.job-matches-page .match-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(15, 23, 36, 0.06);
+}
+
+.job-matches-page .match-card h2 {
+    margin: 0 0 6px;
+    font-size: 1.2rem;
+}
+
+.job-matches-page .match-score {
+    display: inline-block;
+    margin-bottom: 8px;
+    background: #7222ac;
+    color: #ffffff;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.job-matches-page .match-card h3 {
+    margin: 14px 0 6px;
+    font-size: 1rem;
+}
+
+.job-matches-page .match-card p,
+.job-matches-page .match-card li {
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.job-matches-page .match-meta {
+    margin: 0 0 6px;
+    color: #475569;
+}
+
+.job-matches-page #match-message {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.job-matches-page #match-message[hidden] {
+    display: none;
+}
+
+.job-matches-page #retry-matches.apply-button {
+    align-self: flex-start;
+    width: auto;
+    margin-top: 0;
+    margin-bottom: 16px;
+    margin-left: calc((100% - min(100%, 760px)) / 2);
+    margin-right: auto;
+}
+
+.job-matches-page button:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.job-matches-page :focus-visible {
+    outline: 3px solid #a855f7;
+    outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+    .job-matches-page .match-callout {
+        padding: 12px 14px;
+    }
+}

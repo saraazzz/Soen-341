@@ -97,6 +97,7 @@ const {
 } = require("./notifications");
 const { parseDeadline } = require("./posting-deadlines");
 const { startDeadlineArchiver } = require("./deadline-archiver");
+const { ensureMatchProfileTable } = require("./job-matching");
 const app = express();
 const PORT = 3000;
 
@@ -112,6 +113,7 @@ app.use(session({
     saveUninitialized: false,
 }));
 app.use('/api/feedback', require('./routes/feedback'));
+app.use('/api/job-matching', require('./routes/job-matching'));
 
 // Serve frontend files
 app.use(express.static("public"));
@@ -2412,6 +2414,7 @@ if (require.main === module) {
 
         console.log("Connected to MySQL database!");
         ensureNotificationsTable(db);
+        ensureMatchProfileTable(db);
 
         ensureSchema(db, () => {
             // Start only in the real app; importing the server in tests starts no timer.

@@ -92,6 +92,17 @@ blank/null removes it. Expired jobs reject applications and are excluded from se
 even before an archive worker runs. API deadline_at values are ISO UTC strings.
 Notification code can use that timestamp without guessing the timezone.
 
+## AI job matching profile (005)
+
+`005_job_seeker_match_profile.sql` adds `job_seeker_match_profile` for education,
+experience, and job-search preferences. Skills, about, location, and the resume
+stay on the existing profile tables. Apply once. Existing users and jobs are
+unchanged. The server also creates this table on startup if it is missing.
+
+```sql
+SOURCE new_code/migrations/005_job_seeker_match_profile.sql;
+```
+
 The running server archives expired postings at startup and every 60 seconds.
 Search and application inserts enforce the UTC deadline immediately, independently
 of the worker. Archived postings are not reopened by changing or removing a deadline.
