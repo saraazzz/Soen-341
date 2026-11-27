@@ -1,69 +1,133 @@
 # AI Usage Log — Ayza
 
-## Entry 1 — Team Process Document
+## Entry 1 — Sprint 1: Team Process Document
 
 **Date:** September 20, 2026
 **Team Member:** Ayza
 **AI Tool:** ChatGPT
-**Purpose:** Creating and improving the CareerConnect team process document for SOEN 341 Sprint 1.
+**Sprint:** 1
+**Purpose:** Creating and improving the CareerConnect team process document.
 
 ### Task
 
-I used ChatGPT to help organize and improve the team's Team Process document. The document covers:
+I used ChatGPT to help organize and improve the team's Team Process document. The document covers team roles, Sprint 1 responsibilities, the GitHub workflow, branching, pull requests, code review, Definition of Ready, Definition of Done, issue labels, repository structure, communication, AI logging, user stories, and the Sprint 1 checklist.
 
-* Team roles and Sprint 1 responsibilities
-* GitHub workflow
-* Branching strategy
-* Pull Request process
-* Code review process
-* Definition of Ready
-* Definition of Done
-* GitHub issue labels
-* Repository structure
-* Communication and meetings
-* AI usage requirements
-* User story and task management
-* Sprint 1 completion checklist
+### Prompt / Summary
 
-### AI Assistance
+I asked ChatGPT to improve the structure and wording of the team process document for SOEN 341. No public chat link was saved.
 
-ChatGPT suggested improvements to the structure and wording of the document, including clarification of the GitHub workflow, Pull Request process, AI logging requirements, and the requirement to maintain 15 user stories.
+### AI Output Summary
+
+ChatGPT suggested a clearer structure and wording for the GitHub workflow, the pull request process, the AI logging requirements, and the requirement to maintain 15 user stories.
 
 ### Action Taken
 
 **Modified**
 
-I reviewed the AI-generated suggestions and modified the content to match the CareerConnect project, our team's responsibilities, and the requirements for SOEN 341.
+I reviewed the suggestions and changed them to match CareerConnect, our team's responsibilities, and the SOEN 341 requirements.
 
 ### Validation
 
-The Team Process document was reviewed by me before being added to the GitHub repository. I verified that the responsibilities, GitHub workflow, AI logging process, and Sprint 1 requirements reflect our team's planned process.
+I reviewed the Team Process document before adding it to GitHub. The responsibilities, workflow, AI logging process, and Sprint 1 requirements match the process the team planned.
 
 ### Related Work
 
-**Repository:** CareerConnect / Soen-341
-**Related Document:** `Team Process.md`
+**Repository:** https://github.com/zayum20/Soen-341
+**Related document:** `Team Process.md`
 
-## Entry 2 — AI Job Matching
+## Entry 2 — Sprint 2: Profiles, Job Listings, and Applications
+
+**Date:** October 15, 2026
+**Team Member:** Ayza
+**AI Tool:** Cursor
+**Sprint:** 2
+**Purpose:** Add job listings, job applications, and employer posting to CareerConnect.
+
+### Task
+
+I used Cursor to build the job-seeker and employer flow for Sprint 2. Seekers can browse open roles, apply, see a confirmation, and track status. Employers can publish a posting and update an applicant's status.
+
+### Prompt / Summary
+
+The Sprint 2 contribution record covers employee profile management, application submission, and application tracking. The saved commit does not include the original chat. No public chat link was exported.
+
+### AI Output Summary
+
+Cursor added the jobs list, job page, application form, my-applications page, employer posting page, and employer applicants page, with the matching server routes and database tables. Application statuses are Applied, Under Review, Interview, Offered, and Rejected.
+
+### Action Taken
+
+**Accepted with review**
+
+The result was committed as `62e16f6` and merged from `feature/job-applications-and-listings`. I recorded the same work in the Sprint 2 contribution log.
+
+### Validation
+
+The Sprint 2 meeting notes report the application submission and tracking work as complete and ready for review. The pages and routes are in that commit.
+
+### Related Work
+
+**Repository:** https://github.com/zayum20/Soen-341
+**Commit:** `62e16f6`
+**Related document:** `Contribution_Logs/Sprint 2/Sprint_2_Ayza_Waris_Contribution_Log.md`
+
+## Entry 3 — Sprint 3: Application Resumes and Seeker Dashboard
+
+**Date:** November 9–11, 2026
+**Team Member:** Ayza
+**AI Tool:** Cursor
+**Sprint:** 3
+**Purpose:** Keep each submitted resume with its application and show the seeker's application activity.
+
+### Task
+
+I used Cursor for the Sprint 3 seeker work assigned at the November 5 kickoff: link the resume used on an application, show application history, and show status counts and activity statistics.
+
+### Prompt / Summary
+
+The original Cursor chat was not exported. The committed result is the record of what was kept.
+
+### AI Output Summary
+
+Cursor stored a copy of the resume submitted with each application, so replacing the profile resume does not change older applications. It added an application details page, weekly application counts, and the seeker dashboard statistics. Automated tests were added for the resume link, the metrics, and the Sprint 3 acceptance checks.
+
+### Action Taken
+
+**Accepted with review**
+
+The change was committed as `a3551b5`. On November 11 I demonstrated the application and seeker-dashboard work. The team later kept the existing statistics and did not add extra graphs in Sprint 3.
+
+### Validation
+
+The November 11 meeting minutes record the demonstration. The commit includes `new_code/test/application-resumes.test.js`, `new_code/test/application-metrics.test.js`, and `new_code/test/sprint3-acceptance.test.js`.
+
+### Related Work
+
+**Repository:** https://github.com/zayum20/Soen-341
+**Commit:** `a3551b5`
+**Related files:** `new_code/server/application-resumes.js`, `new_code/server/application-metrics.js`, `new_code/public/Dashboard.js`
+
+## Entry 4 — Sprint 4: AI Job Matching
 
 **Date:** November 23–26, 2026
 **Team Member:** Ayza
 **AI Tool:** Cursor (Grok)
-**Purpose:** Implement the second generative-AI feature: job recommendations from a seeker's skills, experience, education, and preferences.
+**Sprint:** 4
+**Purpose:** Recommend open jobs from a seeker's skills, experience, education, and preferences.
 
 ### Task
 
-I used Cursor to build AI job matching for CareerConnect. The feature recommends real open postings. It is separate from resume feedback, which reviews one resume against one job the seeker already applied to.
+I used Cursor to build the second generative-AI feature. It recommends real open postings. It is separate from resume feedback, which reviews one resume against one job the seeker already applied to.
 
 ### Prompt / Summary
 
-I asked Cursor to pull the team project, implement the Sprint 4 job-matching task, keep the original dashboard, use Gemini to write the reasons, and commit the code without the API key. Later I asked why recommendations showed only the local demo posting.
+I asked Cursor to pull the team project, implement job matching, keep the original dashboard, use Gemini to write the reasons, and commit the code without the API key. I later asked why the result showed only the local demo posting.
 
 No public chat link was exported for this Cursor session.
 
 ### AI Output Summary
 
-Cursor added the job-matches page, the Job Matches menu link, and the Jobs page link. The server loads at most 12 open jobs, skips archived jobs, expired jobs, and jobs the seeker already applied to, and asks Gemini for job ids, reasons, evidence, and gaps. It drops invented ids, duplicates, and malformed items, then checks that the jobs are still open. Titles and companies come from the database. Tests and `new_code/README-ai-job-matching.md` were added. User story US-16 was added.
+Cursor added the job-matches page, the Job Matches menu link, and the Jobs page link. The server loads at most 12 open jobs, skips archived jobs, expired jobs, and jobs the seeker already applied to, and asks Gemini for job ids, reasons, evidence, and gaps. It drops invented ids, duplicates, and malformed items, then checks that the jobs are still open. Titles and companies come from the database. Tests, `new_code/README-ai-job-matching.md`, and user story US-16 were added.
 
 ### Action Taken
 
@@ -73,11 +137,10 @@ I rejected a version that scored jobs locally without Gemini, because the assign
 
 ### Validation
 
-I signed in as the local demo seeker and clicked Recommend jobs. Gemini returned the Frontend Intern card with a reason, evidence, and a JavaScript gap, and View job opened that posting. The automated job-matching tests were run. The page was checked in the browser after the notes were put in boxes. The only open job in this local database is the demo Frontend Intern, so no other posting can appear until a real job is posted here.
+I signed in as the local demo seeker and clicked Recommend jobs. Gemini returned the Frontend Intern card with a reason, evidence, and a JavaScript gap, and View job opened that posting. The automated job-matching tests were run, and the notes were checked in the browser. This local database has only that demo posting, so another job appears only after a real posting is added here.
 
 ### Related Work
 
 **Repository:** https://github.com/zayum20/Soen-341
 **Commit:** `e8eef1e` on `main`
 **Related files:** `new_code/server/job-matching.js`, `new_code/server/routes/job-matching.js`, `new_code/public/job-matches.html`, `new_code/README-ai-job-matching.md`
-
