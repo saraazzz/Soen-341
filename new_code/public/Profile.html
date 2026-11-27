@@ -11,7 +11,7 @@
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="nav-bar.css">
         <script src="nav-bar.js" defer></script>
-        <link rel="stylesheet" href="profile.css">
+        <link rel="stylesheet" href="profile.css?v=3">
     </head>
     <body class="nav-collapsed">
         <div id="navbar-container"></div>
@@ -26,7 +26,7 @@
         </section>
         <section>
             <div class="profile-panel">
-                <div class="profile-card">
+                <div class="profile-card seeker-profile">
                     <div class="profile-info">
                         <!-- 
                             ===================================================================
@@ -74,32 +74,52 @@
                         </div>
 
                     <div class="profile-details">
-                        <p>
-                        <i class="bi bi-envelope"></i>
-                        <span id="profile-email">Loading...</span>
+                        <div class="detail-grid">
+                        <p class="detail-item detail-wide">
+                            <span class="detail-icon" aria-hidden="true"><i class="bi bi-envelope"></i></span>
+                            <span class="detail-copy">
+                                <span class="detail-label">Email</span>
+                                <span id="profile-email">Loading...</span>
+                            </span>
                         </p>
 
-                        <p>
-                            <i class="bi bi-telephone"></i>
-                            <span id="profile-phone">Loading...</span>
+                        <p class="detail-item">
+                            <span class="detail-icon" aria-hidden="true"><i class="bi bi-telephone"></i></span>
+                            <span class="detail-copy">
+                                <span class="detail-label">Phone</span>
+                                <span id="profile-phone">Loading...</span>
+                            </span>
                         </p>
 
-                        <p>
-                            <i class="bi bi-geo-alt"></i>
-                            <span id="profile-location">Loading...</span>
+                        <p class="detail-item">
+                            <span class="detail-icon" aria-hidden="true"><i class="bi bi-geo-alt"></i></span>
+                            <span class="detail-copy">
+                                <span class="detail-label">Location</span>
+                                <span id="profile-location">Loading...</span>
+                            </span>
                         </p>
 
-                        <p id="profile-address-row" hidden>
-                            <i class="bi bi-house"></i>
-                            <span id="profile-address"></span>
+                        <p id="profile-address-row" class="detail-item" hidden>
+                            <span class="detail-icon" aria-hidden="true"><i class="bi bi-house"></i></span>
+                            <span class="detail-copy">
+                                <span class="detail-label">Address</span>
+                                <span id="profile-address"></span>
+                            </span>
                         </p>
 
-                        <p id="profile-postal-code-row" hidden>
-                            <i class="bi bi-mailbox"></i>
-                            <span id="profile-postal-code"></span>
+                        <p id="profile-postal-code-row" class="detail-item" hidden>
+                            <span class="detail-icon" aria-hidden="true"><i class="bi bi-mailbox"></i></span>
+                            <span class="detail-copy">
+                                <span class="detail-label">Postal code</span>
+                                <span id="profile-postal-code"></span>
+                            </span>
                         </p>
+                        </div>
 
-                        <p id="profile-about">Loading...</p>
+                        <div class="about-block">
+                            <p class="detail-label">About</p>
+                            <p id="profile-about">Loading...</p>
+                        </div>
 
                         <div class="skills-section">
 

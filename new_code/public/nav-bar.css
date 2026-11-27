@@ -5,13 +5,19 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
 }
 
 body{
-  background-color: #f8fafc;
+  background-color: #07071f;
+  background-image: url("images/wave-background.png");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   margin-left: 220px; /* space for sidebar */
   margin-top: 60px;  /* space for header */
+  color: #0f1724;
 }
 
 /* Top header */
@@ -25,14 +31,21 @@ body{
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  background: #7222ac;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+  background: linear-gradient(90deg, #641e9b 0%, #7222ac 55%, #8a3cc0 100%);
+  box-shadow: 0 4px 16px rgba(80, 20, 120, 0.18);
   z-index: 1100;
 }
 
 .header-logo{
   height: 36px;
   width: auto;
+}
+
+.brand-link{
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  text-decoration: none;
 }
 
 .hamburger{
@@ -88,10 +101,10 @@ body{
   text-decoration: none;
   padding: 12px 18px;
   /* ensure margins don't cause the link to overflow its container */
-  width: calc(100% - 12px);
+  width: calc(100% - 16px);
   font-weight: 600;
-  border-radius: 8px 0 0 8px;
-  margin: 6px 6px 0 6px;
+  border-radius: 10px;
+  margin: 4px 8px;
   box-sizing: border-box;
   overflow: hidden;
 }

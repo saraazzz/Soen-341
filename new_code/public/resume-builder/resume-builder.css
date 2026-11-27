@@ -72,6 +72,12 @@ button.primary:hover{background:var(--brand-dark);border-color:var(--brand-dark)
 .toast{background:var(--brand);color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 4px 14px #0004}
 .toast.err{background:var(--danger)}
 .toast.ok{background:#1b7a46}
+.brand-link{
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  text-decoration: none;
+}
 .header-logo{
   height: 36px;
   width: auto;

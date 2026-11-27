@@ -5,9 +5,14 @@
 
 body {
     margin: 0;
-    background: #f7f7fb;
+    background-color: #07071f;
+    background-image: url("images/wave-background.png");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
     color: #0f1724;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
 }
 
 
@@ -31,12 +36,12 @@ body {
 .page-heading h1 {
     margin: 0 0 8px;
     font-size: 30px;
+    color: #f8f5ff;
 }
 
-.page-heading p,
-.card-heading p {
+.page-heading p {
     margin: 0;
-    color: #64748b;
+    color: #e9e4f5;
     line-height: 1.5;
 }
 
@@ -65,6 +70,12 @@ body {
 .card-heading h2 {
     margin: 0 0 7px;
     font-size: 20px;
+}
+
+.card-heading p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
 }
 
 .settings-card form {

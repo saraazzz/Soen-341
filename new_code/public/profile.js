@@ -19,6 +19,13 @@ const profilePic = document.querySelector('.profile-picture img');
 const userFile = document.getElementById('file-path');
 
 
+function setProfileValue(id, value, emptyText) {
+    const field = document.getElementById(id);
+    const missing = value == null || String(value).trim() === "";
+    field.textContent = missing ? emptyText : value;
+    field.classList.toggle("is-empty", missing);
+}
+
 // Load the logged-in user's profile
 async function loadProfile() {
 
@@ -60,12 +67,10 @@ if (!response.ok) {
         profile.email;
 
     // Display phone
-    document.getElementById('profile-phone').textContent =
-        profile.phone || 'Not provided';
+    setProfileValue('profile-phone', profile.phone, 'Not provided');
 
     // Display location
-    document.getElementById('profile-location').textContent =
-        profile.location || 'Not provided';
+    setProfileValue('profile-location', profile.location, 'Not provided');
 
     if (profile.address) {
         document.getElementById('profile-address').textContent = profile.address;
@@ -78,8 +83,7 @@ if (!response.ok) {
     }
 
     // Display About Me
-    document.getElementById('profile-about').textContent =
-        profile.about || 'No information provided.';
+    setProfileValue('profile-about', profile.about, 'No information provided.');
 
     // Display profile picture
     if (profile.profile_picture) {

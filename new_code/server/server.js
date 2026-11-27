@@ -627,8 +627,16 @@ app.put("/api/profile", (req, res) => {
         email,
         phone,
         location,
+        address,
+        postalCode,
         about
     } = req.body;
+
+    const optionalText = (value) => {
+        if (value == null) return null;
+        const text = String(value).trim();
+        return text === "" ? null : text;
+    };
 
     // Update email in users table
     if (!email) {
@@ -680,6 +688,8 @@ app.put("/api/profile", (req, res) => {
                         last_name = ?,
                         phone = ?,
                         location = ?,
+                        address = ?,
+                        postal_code = ?,
                         about = ?
                     WHERE user_id = ?
                 `;
@@ -689,9 +699,11 @@ app.put("/api/profile", (req, res) => {
                     [
                         firstName,
                         lastName,
-                        phone,
-                        location,
-                        about,
+                        optionalText(phone),
+                        optionalText(location),
+                        optionalText(address),
+                        optionalText(postalCode),
+                        optionalText(about),
                         userId
                     ],
                     (profileError) => {

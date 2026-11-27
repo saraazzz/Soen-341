@@ -1,7 +1,7 @@
 /* Stage 2: All rules are scoped to the job-seeker dashboard to preserve other pages. */
 .seeker-dashboard { color: #0f1724; }
 .seeker-dashboard .seeker-main { max-width: 1040px; margin: 0 auto; padding: 24px; }
-.seeker-dashboard .seeker-intro, .seeker-dashboard section { margin-bottom: 20px; padding: 24px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; }
+.seeker-dashboard .seeker-intro, .seeker-dashboard section { margin-bottom: 20px; padding: 24px; background: white; border: 1px solid #e7e2ee; border-radius: 16px; box-shadow: 0 10px 28px rgba(80, 30, 120, 0.06); }
 .seeker-dashboard h1 { font-size: 2rem; }
 .seeker-dashboard h2 { font-size: 1.3rem; margin-bottom: 16px; }
 .seeker-dashboard h3 { font-size: 1.1rem; overflow-wrap: anywhere; }
@@ -22,6 +22,8 @@
 .seeker-dashboard article { padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
 .seeker-dashboard article p { color: #475569; margin-top: 6px; }
 .seeker-dashboard [role="status"] { margin: 12px 0; }
+.seeker-dashboard #weekly-message,
+.seeker-dashboard #applications-message { color: #94a3b8; }
 .seeker-dashboard .seeker-main button { padding: 10px 16px; border: 0; border-radius: 6px; background: #7222ac; color: white; cursor: pointer; margin-bottom: 12px; }
 .seeker-dashboard .seeker-main button:disabled { opacity: .6; cursor: wait; }
 /* Respect hidden retry controls and make keyboard focus easy to see. */

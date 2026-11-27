@@ -23,7 +23,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    color: #7222ac;
+    color: #f0abfc;
     text-decoration: none;
     font-size: 15px;
     font-weight: 600;
@@ -35,7 +35,7 @@
 }
 
 .job-back-link:hover {
-    color: #551782;
+    color: #ffffff;
     transform: translateX(-2px);
 }
 
@@ -47,7 +47,7 @@
 .job-page-title {
     font-size: 2.2rem;
     font-weight: 700;
-    color: #0f172a;
+    color: #f8f5ff;
     line-height: 1.25;
     margin: 0;
     letter-spacing: -0.01em;

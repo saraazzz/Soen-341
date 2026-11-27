@@ -93,7 +93,9 @@
                 <span></span>
                 <span></span>
             </button>
-            <img class="header-logo" src="images/careerconnect-logo.png" alt="CareerConnect Logo">
+            <a class="brand-link" href="${role === "employer" ? "Employer_Dashboard.html" : "jobs.html"}" aria-label="${role === "employer" ? "Go to dashboard" : "Go to jobs"}">
+                <img class="header-logo" src="images/careerconnect-logo.png" alt="CareerConnect">
+            </a>
         </header>
 
         <nav id="main-nav" class="navbar" aria-label="Main navigation">

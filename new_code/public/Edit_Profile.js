@@ -1,3 +1,5 @@
+let currentEmail = "";
+
 async function loadEditProfile() {
 
     try {
@@ -21,14 +23,20 @@ async function loadEditProfile() {
         document.getElementById('lastName').value =
             profile.last_name || '';
 
-        document.getElementById('email').value =
-            profile.email || '';
+        currentEmail = profile.email || '';
+        document.getElementById('email').value = currentEmail;
 
         document.getElementById('number').value =
             profile.phone || '';
 
         document.getElementById('location').value =
             profile.location || '';
+
+        document.getElementById('address').value =
+            profile.address || '';
+
+        document.getElementById('postalCode').value =
+            profile.postal_code || '';
 
         document.getElementById('about').value =
             profile.about || '';
@@ -66,6 +74,12 @@ const email =
 const location =
     document.getElementById('location').value.trim();
 
+const address =
+    document.getElementById('address').value.trim();
+
+const postalCode =
+    document.getElementById('postalCode').value.trim();
+
 const about =
     document.getElementById('about').value.trim();
 
@@ -96,11 +110,11 @@ if (
 }
 
 
-// Phone validation
+// Phone is optional. Check the format only when one is entered.
 const phonePattern =
-    /^(?:\+1[\s.-]?)?(?:\d{3})[\s.-]?\d{3}[\s.-]?\d{4}$/;
+    /^(?:\+1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/;
 
-if (!phonePattern.test(phone)) {
+if (phone && !phonePattern.test(phone)) {
     alert(
         "Please enter a valid 10-digit phone number. " +
         "Example: 514-123-4567"
@@ -109,11 +123,12 @@ if (!phonePattern.test(phone)) {
 }
 
 
-// Email validation
+// Keep the account's current email, including demo addresses.
+// A new email still has to use a supported provider.
 const emailPattern =
     /^[^\s@]+@(gmail\.com|hotmail\.com|outlook\.com|live\.com|msn\.com|yahoo\.com|icloud\.com|me\.com|proton\.me|protonmail\.com|aol\.com|mail\.com)$/i;
 
-if (!emailPattern.test(email)) {
+if (email.toLowerCase() !== currentEmail.toLowerCase() && !emailPattern.test(email)) {
     alert(
         "Please enter a valid email address using a supported email provider."
     );
@@ -121,9 +136,19 @@ if (!emailPattern.test(email)) {
 }
 
 
-// Location validation
-if (location.length < 2 || location.length > 255) {
+// Location, address, and postal code are optional.
+if (location && (location.length < 2 || location.length > 255)) {
     alert("Please enter a valid location.");
+    return;
+}
+
+if (address.length > 255) {
+    alert("Address must be 255 characters or less.");
+    return;
+}
+
+if (postalCode.length > 20) {
+    alert("Postal code must be 20 characters or less.");
     return;
 }
 
@@ -145,6 +170,8 @@ if (location.length < 2 || location.length > 255) {
                 email: email,
                 phone: phone,
                 location: location,
+                address: address,
+                postalCode: postalCode,
                 about: about
             })
         });

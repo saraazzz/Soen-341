@@ -1,6 +1,8 @@
 // Stage 3B: Keep a local copy for status filtering; no extra database requests on filter changes.
 const applicationsList = document.getElementById('applications-list');
 const applicationsMessage = document.getElementById('applications-message');
+const applicationsState = document.getElementById('applications-state');
+const applicationsBrowse = document.getElementById('applications-browse');
 const statusFilter = document.getElementById('status-filter');
 const retryList = document.getElementById('retry-applications');
 let records = [];
@@ -9,6 +11,11 @@ let listLoading = false;
 function showApplicationsMessage(text) {
     applicationsMessage.textContent = text;
     applicationsMessage.hidden = !text;
+    const isEmpty = text === 'You have not applied to any jobs yet.' || text === 'No applications match this status.';
+    applicationsState.hidden = !text;
+    applicationsState.classList.toggle('is-empty', isEmpty);
+    applicationsState.querySelector('.applications-state-icon').hidden = !isEmpty;
+    applicationsBrowse.hidden = text !== 'You have not applied to any jobs yet.';
 }
 
 function renderApplications() {
