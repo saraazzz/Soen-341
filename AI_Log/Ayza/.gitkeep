@@ -44,3 +44,40 @@ The Team Process document was reviewed by me before being added to the GitHub re
 **Repository:** CareerConnect / Soen-341
 **Related Document:** `Team Process.md`
 
+## Entry 2 — AI Job Matching
+
+**Date:** November 23–26, 2026
+**Team Member:** Ayza
+**AI Tool:** Cursor (Grok)
+**Purpose:** Implement the second generative-AI feature: job recommendations from a seeker's skills, experience, education, and preferences.
+
+### Task
+
+I used Cursor to build AI job matching for CareerConnect. The feature recommends real open postings. It is separate from resume feedback, which reviews one resume against one job the seeker already applied to.
+
+### Prompt / Summary
+
+I asked Cursor to pull the team project, implement the Sprint 4 job-matching task, keep the original dashboard, use Gemini to write the reasons, and commit the code without the API key. Later I asked why recommendations showed only the local demo posting.
+
+No public chat link was exported for this Cursor session.
+
+### AI Output Summary
+
+Cursor added the job-matches page, the Job Matches menu link, and the Jobs page link. The server loads at most 12 open jobs, skips archived jobs, expired jobs, and jobs the seeker already applied to, and asks Gemini for job ids, reasons, evidence, and gaps. It drops invented ids, duplicates, and malformed items, then checks that the jobs are still open. Titles and companies come from the database. Tests and `new_code/README-ai-job-matching.md` were added. User story US-16 was added.
+
+### Action Taken
+
+**Modified**
+
+I rejected a version that scored jobs locally without Gemini, because the assignment requires the model to write the reasons. I asked to leave the original dashboard unchanged. I asked for the recommendation notes to be shown in boxes. I asked for a partial match to stay on the card, with missing skills listed as gaps. The Gemini model was changed to `gemini-flash-lite-latest` after `gemini-4-hydrogen` returned a temporary unavailable error. The API key stayed in local `.env` and was not committed.
+
+### Validation
+
+I signed in as the local demo seeker and clicked Recommend jobs. Gemini returned the Frontend Intern card with a reason, evidence, and a JavaScript gap, and View job opened that posting. The automated job-matching tests were run. The page was checked in the browser after the notes were put in boxes. The only open job in this local database is the demo Frontend Intern, so no other posting can appear until a real job is posted here.
+
+### Related Work
+
+**Repository:** https://github.com/zayum20/Soen-341
+**Commit:** `e8eef1e` on `main`
+**Related files:** `new_code/server/job-matching.js`, `new_code/server/routes/job-matching.js`, `new_code/public/job-matches.html`, `new_code/README-ai-job-matching.md`
+
