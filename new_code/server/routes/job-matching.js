@@ -4,9 +4,7 @@
 // The model may only cite open job ids supplied by the server.
 
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const WordExtractor = require("word-extractor");
+const { tryReadResumeParts } = require("../ai/resume-reader");
 const {
     CANDIDATE_LIMIT,
     CREATE_MATCH_PROFILE_SQL,
@@ -29,7 +27,7 @@ const {
 
 const router = express.Router();
 const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
-const MAX_RESUME_BYTES = 10 * 1024 * 1024;
+
 
 function requireSeeker(req, res) {
     if (!req.session || !req.session.userId) {
@@ -60,37 +58,12 @@ function profileFromRow(row, skills) {
 }
 
 async function loadResumeParts(resumePath) {
-    if (!resumePath) return { parts: [], usedResume: false };
-    const extension = path.extname(resumePath).toLowerCase();
-    if (![".pdf", ".doc", ".docx"].includes(extension)) return { parts: [], usedResume: false };
-
-    const uploadsDir = path.resolve("public/uploads");
-    const file = path.resolve("public", resumePath);
-    if (!file.startsWith(`${uploadsDir}${path.sep}`) || !fs.existsSync(file)) {
-        return { parts: [], usedResume: false };
-    }
-    if (fs.statSync(file).size > MAX_RESUME_BYTES) return { parts: [], usedResume: false };
-
-    if (extension === ".pdf") {
-        const data = fs.readFileSync(file).toString("base64");
-        return {
-            parts: [{ inlineData: { mimeType: "application/pdf", data } }],
-            usedResume: true
-        };
-    }
-
-    const document = await new WordExtractor().extract(file);
-    const resumeText = [document.getHeaders(), document.getBody(), document.getFooters()]
-        .filter(Boolean)
-        .join("\n")
-        .slice(0, 8000)
-        .trim();
-    if (!resumeText) return { parts: [], usedResume: false };
-    return {
-        parts: [{ text: `Resume text (extracted from ${extension}):\n${resumeText}` }],
-        usedResume: true
-    };
+    return tryReadResumeParts(resumePath, {
+        maxBytes: 10 * 1024 * 1024,
+        maxTextChars: 8000
+    });
 }
+
 
 async function requestRecommendations(prompt, resumeParts) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;

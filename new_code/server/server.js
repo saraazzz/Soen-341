@@ -12,6 +12,12 @@ const multer = require("multer");
 const mammoth = require("mammoth");
 const WordExtractor = require("word-extractor");
 const APPLICATION_UPLOAD_DIR = path.join(__dirname, "private", "application-resumes");
+const requireLogin = (req, res, next) => {
+    if (!req.session?.userId) {
+        return res.status(401).json({ message: "Please log in first." });
+    }
+    next();
+};
 const storage = multer.diskStorage({
     destination: "public/uploads/",
     filename: (req, file, cb) => {
@@ -19,9 +25,41 @@ const storage = multer.diskStorage({
         cb(null, `${Date.now()}-${file.fieldname}${ext}`);
     }
 });
-const upload = multer({ storage });
+const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext) || !file.mimetype.startsWith('image/')) {
+            const error = new Error('Only image files (PNG, JPG, JPEG, WEBP) are allowed.');
+            error.code = 'INVALID_FILE_TYPE';
+            return cb(error, false);
+        }
+        cb(null, true);
+    }
+});
+
+const handleAvatarUpload = (req, res, next) => {
+    upload.single('avatar')(req, res, (err) => {
+        if (err) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(400).json({ message: 'Profile picture must be 5 MB or smaller.' });
+            }
+            if (err.code === 'INVALID_FILE_TYPE') {
+                return res.status(400).json({ message: err.message });
+            }
+            return res.status(400).json({ message: 'Could not upload profile picture.' });
+        }
+        next();
+    });
+};
 const resumeStorage = multer.diskStorage({
-    destination: "public/uploads/",
+    destination: (req, file, cb) => {
+        fs.mkdir(PROFILE_RESUME_DIR, { recursive: true }, (err) => {
+            cb(err, PROFILE_RESUME_DIR);
+        });
+    },
     filename: (req, file, cb) => {
         const originalName = path.basename(file.originalname);
         const extension = path.extname(originalName);
@@ -29,7 +67,35 @@ const resumeStorage = multer.diskStorage({
         cb(null, `${Date.now()}-${baseName || file.fieldname}${extension}`);
     }
 });
-const resumeUpload = multer({ storage: resumeStorage });
+const resumeUpload = multer({
+    storage: resumeStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = ['.pdf', '.doc', '.docx'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            const error = new Error('Your profile resume must be a PDF, DOC, or DOCX file.');
+            error.code = 'INVALID_FILE_TYPE';
+            return cb(error, false);
+        }
+        cb(null, true);
+    }
+});
+
+const handleResumeUpload = (req, res, next) => {
+    resumeUpload.single('resume')(req, res, (err) => {
+        if (err) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(400).json({ message: 'Resume must be 10 MB or smaller.' });
+            }
+            if (err.code === 'INVALID_FILE_TYPE') {
+                return res.status(400).json({ message: err.message });
+            }
+            return res.status(400).json({ message: 'Could not upload resume.' });
+        }
+        next();
+    });
+};
 const applicationUploadStorage = multer.diskStorage({
     destination: (req, file, callback) => {
         fs.mkdir(APPLICATION_UPLOAD_DIR, { recursive: true }, (error) => {
@@ -67,13 +133,18 @@ const handleApplicationUploads = (req, res, next) => {
 const {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
+    PROFILE_RESUME_DIR,
+    resolveProfileResume,
+    migrateLegacyProfileResumes,   
     snapshotProfileResume,
     storeUploadedFile,
     resolveStoredResume,
     resolveStoredApplicationDocument,
     removeStoredResume,
-    unlinkPublicUpload
+    unlinkPublicUpload,
+    unlinkProfileResume
 } = require("./application-resumes");
+migrateLegacyProfileResumes();
 const {
     authorizeSeeker,
     authorizeEmployer,
@@ -104,7 +175,6 @@ const PORT = 3000;
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use('/api/resumes', require('./routes/resumes'));
 
 
 app.use(session({
@@ -112,8 +182,24 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
 }));
+app.use('/api/resumes', require('./routes/resumes'));
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/job-matching', require('./routes/job-matching'));
+
+// Block direct public HTTP access to any legacy resume files in public/uploads/ (including URL-encoded)
+app.use('/uploads', (req, res, next) => {
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(req.path);
+    } catch {
+        return res.status(400).json({ message: 'Invalid path.' });
+    }
+    if (/\.(pdf|docx?)$/i.test(decodedPath)) {
+        return res.status(403).json({ message: 'Resumes are private. Please use the authorized route.' });
+    }
+    next();
+});
+
 
 // Serve frontend files
 app.use(express.static("public"));
@@ -146,9 +232,8 @@ app.get('/api/profile/resume/preview', (req, res) => {
                 return res.status(400).send('Only DOC and DOCX files use this preview.');
             }
 
-            const uploadsDir = path.resolve('public/uploads');
-            const file = path.resolve('public', resumePath);
-            if (!file.startsWith(uploadsDir + path.sep) || !fs.existsSync(file)) {
+            const file = resolveProfileResume(resumePath);
+            if (!file) {
                 return res.status(404).send('Your resume file could not be found.');
             }
             if (fs.statSync(file).size > 10 * 1024 * 1024) {
@@ -187,6 +272,22 @@ h1,h2,h3{line-height:1.25}p{margin:0 0 12px}ul,ol{padding-left:24px}table{width:
             console.error('Resume preview error:', previewError);
             res.status(422).send('Could not render this Word resume. Try saving it again as DOCX or PDF.');
         }
+    });
+});
+// Securely serve the candidate's profile resume (PDF) behind authentication
+app.get('/api/profile/resume', (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ message: 'Please log in first.' });
+    if (req.session.role !== 'job_seeker') return res.status(403).json({ message: 'Only job seekers can access this resume.' });
+
+    db.query('SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?', [req.session.userId], (err, rows) => {
+        if (err) return res.status(500).json({ message: 'Error retrieving resume.' });
+        const resumePath = rows[0]?.resume_path;
+        if (!resumePath) return res.status(404).json({ message: 'No resume found.' });
+
+        const file = resolveProfileResume(resumePath);
+        if (!file) return res.status(404).json({ message: 'Resume file could not be found.' });
+
+        res.sendFile(file);
     });
 });
 
@@ -2201,7 +2302,7 @@ app.post("/api/logout", (req, res) => {
 });
 
 // Handle profile picture upload (Both Roles)
-app.post('/api/profile/avatar', upload.single('avatar'), (req, res) => {
+app.post('/api/profile/avatar', requireLogin, handleAvatarUpload, (req, res) => {
     if (!req.session.userId) return res.status(401).json({ message: 'Please log in first.' });
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
 
@@ -2209,13 +2310,17 @@ app.post('/api/profile/avatar', upload.single('avatar'), (req, res) => {
 
     db.query(`SELECT profile_picture FROM ${table} WHERE user_id = ?`, [req.session.userId], (err, rows) => {
         const oldPicture = rows[0]?.profile_picture;
-        if (oldPicture && oldPicture !== 'images/default.png') {
-            fs.unlink(path.join('public', oldPicture), () => {});
-        }
-
         const filePath = `uploads/${req.file.filename}`;
-        db.query(`UPDATE ${table} SET profile_picture = ? WHERE user_id = ?`, [filePath, req.session.userId], (err) => {
+        db.query(`UPDATE ${table} SET profile_picture = ? WHERE user_id = ?`, [filePath, req.session.userId], (updateErr) => {
+            if (updateErr) {
+                // DB update failed: delete the newly uploaded file and keep the old picture
+                fs.unlink(req.file.path, () => {});
+                return res.status(500).json({ message: 'Error updating profile picture.' });
+            }
             if (err) return res.status(500).json({ message: 'Error updating profile picture.' });
+            if (oldPicture && oldPicture !== 'images/default.png') {
+            fs.unlink(path.join('public', oldPicture), () => {});
+            }
             res.json({ profile_picture: filePath });
         });
     });
@@ -2241,25 +2346,30 @@ app.delete('/api/profile/avatar', (req, res) => {
 });
 
 // Upload resume
-app.post('/api/profile/resume', resumeUpload.single('resume'), (req, res) => {
+app.post('/api/profile/resume', requireLogin, handleResumeUpload, (req, res) => {
     if (!req.session.userId) return res.status(401).json({ message: 'Please log in first.' });
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
 
     // Delete old resume file if one exists
     db.query('SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?', [req.session.userId], (err, rows) => {
         const oldResume = rows[0]?.resume_path;
-        // Remove only the profile file. Submitted application copies live outside public/.
-        if (oldResume) {
-            unlinkPublicUpload(oldResume, PUBLIC_DIR);
-        }
+       
 
         // Save new resume path to MySQL
-        const filePath = `uploads/${req.file.filename}`;
+        const filePath = req.file.filename;
         db.query(
             'UPDATE job_seeker_profiles SET resume_path = ? WHERE user_id = ?',
             [filePath, req.session.userId],
             (err) => {
-                if (err) return res.status(500).json({ message: 'Error saving resume.' });
+                if (err) {
+                    fs.unlink(req.file.path, () => {});
+                    return res.status(500).json({ message: 'Error saving resume.' });
+                }
+                // Remove only the profile file. Submitted application copies live outside public/.
+                if (oldResume) {
+                unlinkProfileResume(oldResume);
+                }
+
                 res.json({ message: 'Resume uploaded successfully!', resume_path: filePath });
             }
         );
@@ -2273,7 +2383,7 @@ app.delete('/api/profile/resume', (req, res) => {
     db.query('SELECT resume_path FROM job_seeker_profiles WHERE user_id = ?', [req.session.userId], (err, rows) => {
         const resumePath = rows[0]?.resume_path;
         if (resumePath) {
-            unlinkPublicUpload(resumePath, PUBLIC_DIR);
+            unlinkProfileResume(resumePath);
         }
 
         db.query('UPDATE job_seeker_profiles SET resume_path = NULL WHERE user_id = ?', [req.session.userId], (err) => {
@@ -2283,16 +2393,49 @@ app.delete('/api/profile/resume', (req, res) => {
     });
 });
 
-// Allow employers to view any candidate's profile & resume
+// Restrict candidate profile access to authorized employers only
 app.get('/api/candidates/:id', (req, res) => {
-    db.query('SELECT first_name, last_name, about, profile_picture, resume_path FROM job_seeker_profiles WHERE user_id = ?', 
-        [req.params.id], (err, rows) => {
-            if (err || !rows.length) return res.status(404).json({ message: 'Candidate not found.' });
-            res.json(rows[0]);
-        }
-    );
-});
+    // 1. Must be logged in as an employer
+    const denied = authorizeEmployer(req.session);
+    if (denied) {
+        return res.status(denied.status).json({ message: denied.message });
+    }
 
+    const candidateId = Number(req.params.id);
+    if (!Number.isInteger(candidateId) || candidateId <= 0) {
+        return res.status(400).json({ message: "Invalid candidate ID." });
+    }
+
+    // 2. Check relationship: did this candidate apply to any job owned by this employer?
+    const relationshipSql = `
+        SELECT 1 FROM applications a
+        JOIN jobs j ON a.job_id = j.id
+        WHERE a.job_seeker_id = ? AND j.employer_id = ?
+        LIMIT 1
+    `;
+
+    db.query(relationshipSql, [candidateId, req.session.userId], (relErr, relRows) => {
+        if (relErr) {
+            return res.status(500).json({ message: "Database error checking authorization." });
+        }
+        if (!relRows.length) {
+            return res.status(403).json({ message: "You are not authorized to view this candidate." });
+        }
+
+        // 3. Return only necessary info (omit resume_path to prevent file path leakage)
+        const profileSql = `
+            SELECT first_name, last_name, about, profile_picture 
+            FROM job_seeker_profiles 
+            WHERE user_id = ?
+        `;
+        db.query(profileSql, [candidateId], (err, rows) => {
+            if (err || !rows.length) {
+                return res.status(404).json({ message: "Candidate profile not found." });
+            }
+            res.json(rows[0]);
+        });
+    });
+});
 // ==========================================
 // Notifications & Reminders API
 // ==========================================

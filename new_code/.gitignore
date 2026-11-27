@@ -4,3 +4,5 @@ node_modules/
 uploads/
 private/application-resumes/*
 !private/application-resumes/.gitkeep
+private/profile-resumes/*
+!private/profile-resumes/.gitkeep

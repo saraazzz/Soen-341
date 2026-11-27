@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const request = require("supertest");
 const bcrypt = require("bcrypt");
+const { PROFILE_RESUME_DIR } = require("../server/application-resumes");
 
 jest.mock("mysql2", () => ({
     createConnection: jest.fn(() => ({
@@ -17,6 +18,7 @@ const db = mysql.createConnection.mock.results[0].value;
 
 const RESUME_DIR = path.resolve("public/uploads");
 const RESUME_PATH = path.join(RESUME_DIR, "feedback-test.pdf");
+const PRIVATE_RESUME_PATH = path.join(PROFILE_RESUME_DIR, "feedback-private-test.pdf");
 const originalFetch = global.fetch;
 
 let password;
@@ -73,6 +75,9 @@ beforeEach(() => {
 afterEach(() => {
     if (fs.existsSync(RESUME_PATH)) {
         fs.unlinkSync(RESUME_PATH);
+    }
+    if (fs.existsSync(PRIVATE_RESUME_PATH)) {
+        fs.unlinkSync(PRIVATE_RESUME_PATH);
     }
 });
 
@@ -131,15 +136,15 @@ test("job seekers without an uploaded resume receive an error", async () => {
 
 // 4. A valid resume receives structured AI feedback.
 test("valid resume returns AI-generated feedback and recommendations", async () => {
-    fs.mkdirSync(RESUME_DIR, { recursive: true });
-    fs.writeFileSync(RESUME_PATH, "Test resume PDF content");
+   fs.mkdirSync(PROFILE_RESUME_DIR, { recursive: true });
+   fs.writeFileSync(PRIVATE_RESUME_PATH, "Test private resume PDF content");
 
     const agent = await login();
     db.query.mockClear();
 
     db.query.mockImplementationOnce((sql, params, callback) => {
         expect(params).toEqual([42]);
-        callback(null, [{ resume_path: "uploads/feedback-test.pdf" }]);
+        callback(null, [{ resume_path: "feedback-private-test.pdf" }]);
     });
 
     global.fetch.mockResolvedValueOnce({

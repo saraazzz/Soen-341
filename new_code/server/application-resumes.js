@@ -4,7 +4,10 @@ const path = require("path");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const APPLICATION_RESUME_DIR = path.join(__dirname, "..", "private", "application-resumes");
-
+const PROFILE_RESUME_DIR = process.env.PROFILE_RESUME_DIR
+    ? path.resolve(process.env.PROFILE_RESUME_DIR)
+    : path.join(__dirname, "..", "private", "profile-resumes");
+    
 function resolveInside(rootDir, relativePath) {
     if (!relativePath || typeof relativePath !== "string") {
         return null;
@@ -21,6 +24,26 @@ function resolveInside(rootDir, relativePath) {
     return resolved;
 }
 
+function resolveProfileResume(storedPath) {
+    if (!storedPath || typeof storedPath !== "string") {
+        return null;
+    }
+
+    // 1. Check new private location (if stored as bare filename or relative path)
+    const privateResolved = resolveInside(PROFILE_RESUME_DIR, path.basename(storedPath));
+    if (privateResolved && fs.existsSync(privateResolved) && fs.statSync(privateResolved).isFile()) {
+        return privateResolved;
+    }
+
+    // 2. Check legacy location (stored like "uploads/123-resume.pdf" inside public/)
+    const publicResolved = resolveInside(PUBLIC_DIR, storedPath);
+    if (publicResolved && fs.existsSync(publicResolved) && fs.statSync(publicResolved).isFile()) {
+        return publicResolved;
+    }
+
+    return null;
+}
+
 function snapshotProfileResume({
     sourceRelativePath,
     sourceRoot,
@@ -32,7 +55,7 @@ function snapshotProfileResume({
         return { file: null, originalName: null, missing: false };
     }
 
-    const resolved = resolveInside(sourceRoot, sourceRelativePath);
+    const resolved = resolveProfileResume(sourceRelativePath) || resolveInside(sourceRoot, sourceRelativePath);
 
     if (!resolved) {
         const error = new Error("Resume path is outside the uploads directory.");
@@ -122,11 +145,17 @@ function resolveStoredApplicationDocument(storedName, privateRoot, publicRoot) {
     const uploadsRoot = path.join(publicRoot, "uploads");
     const resolved = resolveInside(uploadsRoot, storedName.slice(legacyPrefix.length));
 
-    if (!resolved || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-        return null;
-    }
+   if (!resolved) {
+    return null;
+}
 
+if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
     return resolved;
+}
+
+// The startup migration moves legacy documents here while the database
+// continues to store paths such as "uploads/letter.pdf".
+return resolveStoredResume(path.basename(storedName), PROFILE_RESUME_DIR);
 }
 
 function removeStoredResume(storedName, destinationRoot) {
@@ -147,13 +176,47 @@ function unlinkPublicUpload(relativePath, publicRoot) {
     fs.unlink(resolved, () => {});
 }
 
+function unlinkProfileResume(storedPath) {
+    const resolved = resolveProfileResume(storedPath);
+    if (resolved) {
+        fs.unlink(resolved, () => {});
+    }
+}
+
+function migrateLegacyProfileResumes(publicRoot = PUBLIC_DIR, privateRoot = PROFILE_RESUME_DIR) {
+    const legacyDir = path.join(publicRoot, "uploads");
+    if (!fs.existsSync(legacyDir)) {
+        return;
+    }
+
+    const entries = fs.readdirSync(legacyDir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (!/\.(pdf|docx?)$/i.test(entry.name)) continue;
+
+        fs.mkdirSync(privateRoot, { recursive: true });
+        const src = path.join(legacyDir, entry.name);
+        const dest = path.join(privateRoot, entry.name);
+
+        if (!fs.existsSync(dest)) {
+            fs.renameSync(src, dest);
+        } else {
+    fs.unlinkSync(src);
+        }
+    }
+}
+
 module.exports = {
     PUBLIC_DIR,
     APPLICATION_RESUME_DIR,
+    PROFILE_RESUME_DIR,
+    resolveProfileResume, 
+    migrateLegacyProfileResumes,
     snapshotProfileResume,
     storeUploadedFile,
     resolveStoredResume,
     resolveStoredApplicationDocument,
     removeStoredResume,
-    unlinkPublicUpload
+    unlinkPublicUpload,
+    unlinkProfileResume
 };

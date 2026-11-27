@@ -1,4 +1,5 @@
-
+const fs = require("fs");
+const path = require("path");
 const request = require("supertest");
 const bcrypt = require("bcrypt");
 
@@ -163,6 +164,19 @@ test("POST /api/register/employer should reject a duplicate email", async () => 
     expect(response.body.message).toBe(
         "That email is already being used."
     );
+});
+
+test("encoded resume URLs are blocked", async () => {
+    const file = path.resolve("public/uploads/review-private.pdf");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "private resume");
+
+    try {
+        const response = await request(app).get("/uploads/review-private%2epdf");
+        expect(response.status).toBe(403);
+    } finally {
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+    }
 });
 
 

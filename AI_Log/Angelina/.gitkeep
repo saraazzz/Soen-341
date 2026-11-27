@@ -901,3 +901,71 @@ Accepted and integrated into branch `feature/recruiter-applicants-by-posting` an
 The combination of client-side query parameters and server-side SQL ownership constraints ensures both a smooth user experience (recruiters can view candidates per role) and strict security (recruiter A cannot access applicant resumes belonging to recruiter B). Adding automated acceptance tests ensures these security guarantees cannot regress in future sprints.
 
 **Related pull request:** `feature/recruiter-applicants-by-posting`
+
+## Entry 8 — Database Consistency, Resume Ownership, and Protected Document Access (Sprint 4)
+
+**Task ID/Title:** Tasks 1–7: Database Consistency, Resume Ownership, and Private Document Access (Sprint 4)
+
+**Date:** November 24–25, 2026  
+
+**Responsible Person:** Angelina Yajaira Montano  
+
+**AI Tool:** Antigravity (Gemini 3.8 Flash)  
+
+**Purpose of AI Use:** Sprint 4 schedule planning, schema auditing, migration conflict resolution, authorization architecture, secure file upload hardening, and verification against automated tests.
+
+### Prompt and context
+
+I provided the Sprint 4 requirements assignment image detailing my responsibilities around database repeatability, resume ownership, private document access, and migration consolidation, along with the constraint that November 28th was fully blocked. I also provided responses received from teammates Elfy (AI resume reader) and Sara (storage paths and application snapshots).
+
+My prompts included:
+- "Can you structure an outline based on the picture I sent and the document on Sprint 4 for my part only, considering that the only dates I'm restricted all day is November 28th"
+- "Can you craft the message for each of them [Sara & Elfy], what I need from them exactly?"
+- "Can you format it into the readable format for applications and notifications for the schema file?"
+- "What is the plan for task 1 and what should I name the document?"
+- "What do I need to do for task 2 [migration inconsistencies] and what would the migration look like?"
+- "How do I add ownership to resume-builder records in Task 3 and why update db.js as well?"
+- "How do I restrict /api/candidates/:id for the TA rubric?"
+- "Why do we need to change the upload method and how do we connect the shared resolver helper?"
+
+### AI-generated content
+
+The assistant provided:
+1. **Day-by-Day Sprint Schedule:** Created a tailored schedule artifact (`sprint4_schedule.md`) rescheduling Task 9 from the blocked Nov 28 to Nov 27, and grouping Tasks 1–3 and 4–7 into cohesive working sessions.
+2. **Schema Inventory (`DATABASE_SCHEMA.md`):** Formatted authoritative database schema documentation comparing `database.sql`, numbered migrations `001`–`007`, and runtime startup queries in `db.js`.
+3. **Migration Numbering & Deprecation:**
+   - Renamed duplicate migration `004_optional_posting_deadlines.sql` to `005_optional_posting_deadlines.sql`.
+   - Created corrective migration `006_deprecate_deadline.sql` to safely drop the unused `jobs.deadline` column while preserving `jobs.deadline_at`.
+   - Created migration `007_add_resume_owner.sql` and updated `db.js` to add nullable `user_id` foreign key on the `resumes` table with `ON DELETE CASCADE`.
+4. **Resume Builder Authorization (`routes/resumes.js`):**
+   - Added authentication guards (`401 Unauthorized`) across `GET /`, `POST /`, `GET /:id`, and `PUT /:id`.
+   - Parameterized queries to filter by `user_id = req.session.userId`, preventing unauthorized cross-user enumeration or tampering.
+5. **Candidate Access Control (`server.js`):**
+   - Restricted `/api/candidates/:id` to authenticated employers (`401`/`403`).
+   - Implemented relationship verification ensuring the candidate has applied to a posting owned by the requesting employer.
+   - Omitted `resume_path` from the candidate profile query to prevent raw file path exposure.
+6. **Private Resume Storage & Protected Routes:**
+   - Added configurable `PROFILE_RESUME_DIR` and `resolveProfileResume` helper in `application-resumes.js` supporting both private resumes and backward-compatible `uploads/` lookups.
+   - Created authenticated `GET /api/profile/resume` to stream PDF resumes to authorized job seekers via `res.sendFile`.
+   - Updated `public/profile.js` to point the preview iframe to `/api/profile/resume` rather than raw static URLs.
+   - Updated `routes/feedback.js` to use `resolveProfileResume`.
+7. **Upload Hardening & Safe Replacement:**
+   - Created `requireLogin` middleware to reject unauthenticated uploads before Multer processes incoming bytes.
+   - Configured file-type and size limits (10 MB for resumes, 5 MB for avatars).
+   - Inverted replacement order: the new file path is saved to MySQL first; only upon successful database update is the previous file unlinked. If the update fails, the newly uploaded file is cleaned up and the previous file is preserved.
+
+### Validation
+
+1. **Syntax Checks:** Ran `node -c` across `server.js`, `routes/resumes.js`, `routes/feedback.js`, and `application-resumes.js` with 0 errors.
+2. **Automated Test Suite:** Executed `node --test ./test/*.test.js` inside `new_code/`. All **37 tests passed cleanly (0 failures)**, confirming no regressions across application snapshots, deadline archivers, isolation, or recruiter metrics.
+3. **Security Logic Review:** Verified that anonymous requests to resume builder and profile resume routes return `401`, cross-user access attempts fail, and orphaned resume records (`user_id = NULL`) remain inaccessible.
+
+### Decision
+
+Implemented all security hardening, schema documentation, and migration consistency fixes on branch `feature/sprint4-db-and-access-control`. Pushed to GitHub and opened for code review by Sara prior to remaining database setup/upgrade verification.
+
+### Reflection
+
+Securing file uploads and user documents requires defense in depth: checking authentication before Multer writes data to disk protects against disk-exhaustion attacks, while deferring deletion of replaced files until database transactions succeed guarantees data durability. Using shared path resolvers ensures backward compatibility with legacy data without compromising future deployments.
+
+**Related branch / PR:** `feature/sprint4-db-and-access-control`

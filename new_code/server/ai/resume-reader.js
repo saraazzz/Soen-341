@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const WordExtractor = require('word-extractor');
 const { AiError } = require('./errors');
+const { resolveProfileResume } = require('../application-resumes');
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx'];
 const DEFAULTS = { maxBytes: 10 * 1024 * 1024, maxTextChars: 100_000 };
@@ -16,11 +17,8 @@ const DEFAULTS = { maxBytes: 10 * 1024 * 1024, maxTextChars: 100_000 };
 // path is relative to ./public and must stay inside ./public/uploads.
 // If resumes move to private storage, pass your own resolvePath option.
 function defaultResolvePath(resumePath) {
-  const uploadsDir = path.resolve('public/uploads');
-  const file = path.resolve('public', resumePath);
-  return file.startsWith(uploadsDir + path.sep) ? file : null;
+  return resolveProfileResume(resumePath);
 }
-
 // Throws AiError (NO_RESUME, BAD_TYPE, NOT_FOUND, TOO_LARGE, UNREADABLE).
 // options: { maxBytes, maxTextChars, resolvePath(resumePath) -> absolute path | null }
 async function readResumeParts(resumePath, options = {}) {

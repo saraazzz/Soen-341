@@ -8,7 +8,8 @@ const {
     storeUploadedFile,
     resolveStoredResume,
     resolveStoredApplicationDocument,
-    unlinkPublicUpload
+    unlinkPublicUpload,
+    migrateLegacyProfileResumes
 } = require("../server/application-resumes");
 
 function temporaryDirectory() {
@@ -153,4 +154,18 @@ test("replacing a profile resume cannot delete a private application copy", () =
     unlinkPublicUpload(path.relative(publicRoot, privateResume), publicRoot);
 
     assert.equal(fs.readFileSync(privateResume, "utf8"), "keep");
+});
+
+test("legacy resumes are moved out of public uploads", () => {
+    const publicRoot = temporaryDirectory();
+    const privateRoot = temporaryDirectory();
+    const uploadsRoot = path.join(publicRoot, "uploads");
+
+    fs.mkdirSync(uploadsRoot);
+    fs.writeFileSync(path.join(uploadsRoot, "resume.pdf"), "resume bytes");
+
+    migrateLegacyProfileResumes(publicRoot, privateRoot);
+
+    assert.equal(fs.existsSync(path.join(uploadsRoot, "resume.pdf")), false);
+    assert.equal(fs.readFileSync(path.join(privateRoot, "resume.pdf"), "utf8"), "resume bytes");
 });
